@@ -1,66 +1,20 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const crypto_1 = require("crypto");
-const ws_1 = __importStar(require("ws"));
-const ioredis_1 = __importDefault(require("ioredis"));
+const ws_1 = require("ws");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
+const types_1 = require("./types");
+const redis_1 = require("./redis");
+const signaling_1 = require("./signaling");
+const utils_1 = require("./utils");
+/* ================================
+   CONFIG
+================================ */
 const PORT = Number(process.env.PORT) || 5000;
-const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
-const CHAT_CHANNEL = "chat_channel";
-/* ================================
-   TYPES
-================================ */
-var MessageType;
-(function (MessageType) {
-    MessageType["Message"] = "message";
-    MessageType["Event"] = "event";
-})(MessageType || (MessageType = {}));
-/* ================================
-   REDIS SETUP
-================================ */
-const publisher = new ioredis_1.default(REDIS_URL);
-const subscriber = publisher.duplicate();
-publisher.on("error", (err) => {
-    console.error(`❌ [Server ${PORT}] Redis Publisher Error:`, err);
-});
-subscriber.on("error", (err) => {
-    console.error(`❌ [Server ${PORT}] Redis Subscriber Error:`, err);
-});
-subscriber.subscribe(CHAT_CHANNEL, (err, count) => {
-    if (err) {
-        console.error(`❌ Failed to subscribe to Redis channel:`, err);
-    }
-    else {
-        console.log(`✅ Subscribed to Redis channel: ${CHAT_CHANNEL} (${count})`);
-    }
-});
 /* ================================
    WEBSOCKET SERVER
 ================================ */
@@ -68,42 +22,67 @@ const wss = new ws_1.WebSocketServer({
     port: PORT,
     host: "0.0.0.0",
 });
-console.log(`🚀 WebSocket server running on port ${PORT}`);
+(0, utils_1.log)(PORT, `🚀 WebSocket server running on port ${PORT}`);
 /* ================================
-   HELPERS
+   USER REGISTRY
+   Maps username → WebSocket on this server instance
 ================================ */
-// Safe JSON parsing
-function safeParse(message) {
+const userMap = new Map();
+/* ================================
+   BROADCAST ONLINE USERS
+   Reads from Redis Set (cross-server) and sends to all local clients
+================================ */
+async function broadcastUserList() {
     try {
-        return JSON.parse(message.toString());
+        const users = await (0, redis_1.getOnlineUsers)();
+        const payload = JSON.stringify({
+            type: types_1.MessageType.UserList,
+            users: users.sort(),
+        });
+        (0, utils_1.broadcastToAll)(wss, payload);
     }
-    catch {
-        return null;
+    catch (err) {
+        (0, utils_1.log)(PORT, `❌ Failed to broadcast user list: ${err}`);
     }
 }
-// Broadcast to all connected clients
-function broadcast(data, excludeWs) {
-    wss.clients.forEach((client) => {
-        if (client !== excludeWs &&
-            client.readyState === ws_1.default.OPEN) {
-            client.send(data);
-        }
-    });
+/* ================================
+   PUBLISH USER LIST TO ALL SERVERS
+   Publishes an event so every server broadcasts the updated user list
+================================ */
+async function publishUserListUpdate() {
+    try {
+        const users = await (0, redis_1.getOnlineUsers)();
+        const payload = JSON.stringify({
+            type: types_1.MessageType.UserList,
+            users: users.sort(),
+        });
+        // Publish on chat channel so all servers broadcast to their clients
+        await redis_1.publisher.publish(redis_1.CHAT_CHANNEL, payload);
+    }
+    catch (err) {
+        (0, utils_1.log)(PORT, `❌ Failed to publish user list update: ${err}`);
+    }
 }
 /* ================================
    REDIS LISTENER
 ================================ */
-subscriber.on("message", (channel, message) => {
-    if (channel !== CHAT_CHANNEL)
-        return;
-    console.log(`📨 [Server ${PORT}] Broadcasting to ${wss.clients.size} clients`);
-    broadcast(message);
+redis_1.subscriber.on("message", (channel, message) => {
+    if (channel === redis_1.CHAT_CHANNEL) {
+        // Broadcast chat messages and user list updates to all local clients
+        (0, utils_1.broadcastToAll)(wss, message);
+    }
+    else if (channel === redis_1.SIGNALING_CHANNEL) {
+        // Deliver signaling messages to the target user on this server
+        (0, signaling_1.handleSignalingFromRedis)(message, userMap);
+    }
 });
+// Subscribe to channels
+(0, redis_1.subscribeToChannels)();
 /* ================================
    CONNECTION HANDLER
 ================================ */
 wss.on("connection", (ws) => {
-    console.log(`🟢 [Server ${PORT}] Client connected (${wss.clients.size} active)`);
+    (0, utils_1.log)(PORT, `🟢 Client connected (${wss.clients.size} active connections)`);
     // Heartbeat
     ws.isAlive = true;
     ws.on("pong", () => {
@@ -111,60 +90,100 @@ wss.on("connection", (ws) => {
     });
     // Message Handler
     ws.on("message", async (message) => {
-        const parsed = safeParse(message);
+        const parsed = (0, utils_1.safeParse)(message);
         if (!parsed) {
-            console.warn("⚠️ Invalid JSON received");
+            (0, utils_1.log)(PORT, "⚠️ Invalid JSON received");
             return;
         }
-        const { type, action, user, content } = parsed;
-        let payload = null;
-        if (type === MessageType.Message) {
+        const { type } = parsed;
+        // ---- Chat Message ----
+        if (type === types_1.MessageType.Message) {
+            const { user, content } = parsed;
             if (!user || !content)
                 return;
-            payload = {
+            const payload = {
                 id: (0, crypto_1.randomUUID)(),
-                type: MessageType.Message,
+                type: types_1.MessageType.Message,
                 user,
                 content,
                 timestamp: Date.now(),
                 server: PORT,
             };
-            console.log(`💬 ${user}: ${content}`);
+            (0, utils_1.log)(PORT, `💬 ${user}: ${content}`);
+            await (0, redis_1.publishChat)(payload);
+            return;
         }
-        if (type === MessageType.Event) {
+        // ---- Event (join/leave) ----
+        if (type === types_1.MessageType.Event) {
+            const { user, action } = parsed;
             if (!user || !action)
                 return;
-            payload = {
-                type: MessageType.Event,
+            if (action === "joined") {
+                // Register user on this server instance
+                userMap.set(user, ws);
+                await (0, redis_1.addOnlineUser)(user);
+                (0, utils_1.log)(PORT, `📢 ${user} joined (tracked on this server)`);
+            }
+            if (action === "left") {
+                userMap.delete(user);
+                await (0, redis_1.removeOnlineUser)(user);
+                (0, utils_1.log)(PORT, `📢 ${user} left`);
+            }
+            const payload = {
+                type: types_1.MessageType.Event,
                 action,
                 user,
                 timestamp: Date.now(),
             };
-            console.log(`📢 ${user} ${action}`);
-        }
-        if (!payload)
+            await (0, redis_1.publishChat)(payload);
+            // Broadcast updated user list to all servers
+            await publishUserListUpdate();
             return;
-        try {
-            await publisher.publish(CHAT_CHANNEL, JSON.stringify(payload));
         }
-        catch (err) {
-            console.error("❌ Redis publish failed:", err);
+        // ---- WebRTC Signaling ----
+        if ((0, signaling_1.isSignalingMessage)(type)) {
+            await (0, signaling_1.handleSignalingMessage)(parsed, userMap);
+            return;
         }
+        (0, utils_1.log)(PORT, `⚠️ Unknown message type: ${type}`);
     });
-    ws.on("close", () => {
-        console.log(`🔴 Client disconnected (${wss.clients.size} active)`);
+    // Disconnect Handler
+    ws.on("close", async () => {
+        const username = (0, utils_1.findUsernameByWs)(userMap, ws);
+        if (username) {
+            userMap.delete(username);
+            await (0, redis_1.removeOnlineUser)(username);
+            (0, utils_1.log)(PORT, `🔴 ${username} disconnected`);
+            // Notify others about the user leaving
+            const payload = {
+                type: types_1.MessageType.Event,
+                action: "left",
+                user: username,
+                timestamp: Date.now(),
+            };
+            await (0, redis_1.publishChat)(payload);
+            await publishUserListUpdate();
+        }
+        else {
+            (0, utils_1.log)(PORT, `🔴 Unknown client disconnected (${wss.clients.size} active)`);
+        }
     });
     ws.on("error", (err) => {
-        console.error("❌ WebSocket error:", err);
+        (0, utils_1.log)(PORT, `❌ WebSocket error: ${err.message}`);
     });
 });
 /* ================================
    HEARTBEAT CHECK
 ================================ */
-const interval = setInterval(() => {
+const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
-            console.log("💀 Terminating dead connection");
+            const username = (0, utils_1.findUsernameByWs)(userMap, ws);
+            if (username) {
+                userMap.delete(username);
+                (0, redis_1.removeOnlineUser)(username).then(() => publishUserListUpdate());
+            }
+            (0, utils_1.log)(PORT, "💀 Terminating dead connection");
             return ws.terminate();
         }
         ws.isAlive = false;
@@ -175,18 +194,16 @@ const interval = setInterval(() => {
    GRACEFUL SHUTDOWN
 ================================ */
 async function shutdown() {
-    console.log(`🛑 Shutting down server ${PORT}...`);
-    clearInterval(interval);
-    try {
-        await publisher.quit();
-        await subscriber.quit();
-        console.log("✅ Redis connections closed");
+    (0, utils_1.log)(PORT, "🛑 Shutting down...");
+    clearInterval(heartbeatInterval);
+    // Remove all local users from Redis
+    for (const username of userMap.keys()) {
+        await (0, redis_1.removeOnlineUser)(username);
     }
-    catch (err) {
-        console.error("❌ Redis shutdown error:", err);
-    }
+    userMap.clear();
+    await (0, redis_1.shutdownRedis)();
     wss.close(() => {
-        console.log("✅ WebSocket server closed");
+        (0, utils_1.log)(PORT, "✅ WebSocket server closed");
         process.exit(0);
     });
 }

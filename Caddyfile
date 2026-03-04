@@ -1,16 +1,19 @@
 :8080 {
-    root * /srv
-    file_server
-    try_files {path} /index.html
-
-    handle_path /ws* {
+    # WebSocket proxy — must come before file_server to avoid
+    # try_files intercepting /ws requests
+    handle /ws* {
         reverse_proxy ws1:4001 ws2:4002 ws3:4003 {
-            lb_policy round_robin
+            lb_policy ip_hash
             header_up Host {host}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
         }
+    }
+
+    # Static file server for the frontend
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
     }
 
     header {

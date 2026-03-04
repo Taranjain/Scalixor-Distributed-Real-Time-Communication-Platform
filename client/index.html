@@ -3,30 +3,57 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>💬 WebSocket Chat Room</title>
+    <meta name="description" content="Distributed real-time communication platform with chat and video calling." />
+    <title>🚀 Real-Time Communication Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
 </head>
 <body>
-    <div id="chat-box">
-        <h2>💬 Chat Application </h2>
-        
-        <div id="connection-status" class="status-disconnected">Disconnected</div>
-
-        <!-- Connect Section -->
-        <div id="connect-section">
+    <!-- ============ LOGIN SCREEN ============ -->
+    <div id="login-screen">
+        <div id="login-card">
+            <div class="login-logo">🚀</div>
+            <h1>Real-Time Comm Platform</h1>
+            <p class="login-subtitle">Distributed chat & video calling</p>
             <input 
                 type="text" 
                 id="username" 
                 placeholder="Enter your username" 
                 autocomplete="off"
+                maxlength="20"
             />
-            <button id="connect-btn">Connect to Chat</button>
+            <button id="connect-btn">Connect</button>
         </div>
+    </div>
 
-        <!-- Chat Section -->
-        <div id="chat-section" style="display:none;">
+    <!-- ============ MAIN APP ============ -->
+    <div id="app" style="display:none;">
+        <!-- Sidebar: Online Users -->
+        <aside id="users-panel">
+            <div class="panel-header">
+                <h3>👥 Online</h3>
+                <span id="user-count" class="badge">0</span>
+            </div>
+            <ul id="users-list"></ul>
+        </aside>
+
+        <!-- Main Content: Chat -->
+        <main id="chat-area">
+            <div id="chat-header">
+                <div class="header-left">
+                    <button id="toggle-sidebar" class="icon-btn" title="Toggle users">☰</button>
+                    <h2>💬 Chat Room</h2>
+                </div>
+                <div class="header-right">
+                    <div id="connection-status" class="status-connected">Connected</div>
+                    <button id="leave-btn" class="btn-danger" title="Leave chat">Leave</button>
+                </div>
+            </div>
+
             <div id="messages"></div>
-            
+
             <div id="input-area">
                 <input 
                     type="text" 
@@ -35,8 +62,37 @@
                     autocomplete="off"
                 />
                 <button id="send-btn">Send</button>
-                <button id="leave-btn" class="leave-btn">Leave</button>
             </div>
+        </main>
+    </div>
+
+    <!-- ============ INCOMING CALL MODAL ============ -->
+    <div id="incoming-call-modal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="call-avatar pulse">📞</div>
+            <h2>Incoming Video Call</h2>
+            <p id="caller-name">Someone is calling...</p>
+            <div class="modal-actions">
+                <button id="accept-call-btn" class="btn-accept">✅ Accept</button>
+                <button id="reject-call-btn" class="btn-reject">❌ Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ VIDEO CALL OVERLAY ============ -->
+    <div id="video-overlay" style="display:none;">
+        <div id="video-container">
+            <video id="remote-video" autoplay playsinline></video>
+            <video id="local-video" autoplay playsinline muted></video>
+            <div id="call-info">
+                <span id="call-peer-name"></span>
+            </div>
+        </div>
+        <div id="call-controls">
+            <button id="toggle-mic-btn" class="control-btn active" title="Toggle Microphone">🎤</button>
+            <button id="toggle-camera-btn" class="control-btn active" title="Toggle Camera">📷</button>
+            <button id="end-call-btn" class="control-btn end-call" title="End Call">📵</button>
         </div>
     </div>
 

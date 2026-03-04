@@ -1,98 +1,149 @@
-# 🚀 Real-Time Chat Application
+# 🚀 Distributed Real-Time Communication Platform
 
-A scalable real-time chat application built using Node.js, Express, Socket.IO, Redis, and Docker.
-Designed for low-latency communication and horizontal scalability in distributed environments.
+A horizontally-scalable real-time communication platform with **group chat** and **1:1 video calling**, built on WebSocket + Redis Pub/Sub with WebRTC peer-to-peer media.
 
-# 📌 Overview
+## Architecture
 
-This application enables instant messaging using WebSockets.
-Redis Pub/Sub is used to synchronize messages across multiple server instances, making the system horizontally scalable.
-Docker ensures consistent development and production environments.
+```
+   Clients (Browser)
+        │
+        │  WebSocket (Chat + Signaling)
+        ▼
+   ┌─── Caddy (Reverse Proxy / Load Balancer) ───┐
+   │            ip_hash sticky sessions           │
+   ▼            ▼            ▼
+ ws1:4001    ws2:4002    ws3:4003    ← Multiple Backend Instances
+   │            │            │
+   └────────────┼────────────┘
+                │  Redis Pub/Sub
+                ▼
+        ┌──────────────┐
+        │  Redis Server │
+        │  • Chat Channel (broadcast)
+        │  • Signaling Channel (targeted relay)
+        │  • Online Users Set (cross-server tracking)
+        └──────────────┘
 
-# 🛠 Tech Stack
+After WebRTC signaling completes:
+  Client A 🎥 ←─── P2P Media (WebRTC) ───→ 🎥 Client B
+```
 
-Backend: Node.js, Express.js
+## How It Works
 
-Real-Time Communication: Socket.IO (WebSockets)
+### Chat System
+1. Client sends a `message` over WebSocket
+2. Server publishes to Redis `chat_channel`
+3. All server instances receive the message and broadcast to their local clients
+4. Every client sees the message regardless of which server they're connected to
 
-Message Broker: Redis (Pub/Sub)
+### WebRTC Video Calling
+1. **Offer**: Caller creates an SDP offer → sent via WebSocket → published to Redis `signaling_channel` → delivered to the callee's server instance → forwarded to callee
+2. **Answer**: Callee accepts → creates SDP answer → same relay back to caller
+3. **ICE Candidates**: Exchanged via the same WebSocket/Redis pathway
+4. **Media**: Flows **directly P2P** between browsers (never through the server)
 
-Containerization: Docker
+### Horizontal Scaling
+- Each server instance maintains a local `Map<username, WebSocket>` for connected users
+- Redis Set (`online_users`) tracks all online users across every server
+- Redis Pub/Sub ensures chat messages reach all servers and signaling reaches the correct server
+- Caddy uses `ip_hash` for sticky sessions so a client's WebSocket stays on one server
 
-Authentication: JWT
+## Tech Stack
 
-Database: MongoDB (if used)
+| Component | Technology |
+|-----------|------------|
+| Frontend | HTML, CSS, Vanilla JavaScript |
+| Backend | Node.js, TypeScript, `ws` library |
+| Pub/Sub | Redis 7 (ioredis) |
+| Video | WebRTC (native browser API) |
+| STUN | `stun:stun.l.google.com:19302` |
+| Reverse Proxy | Caddy 2 |
+| Containers | Docker Compose |
 
-# 🏗 System Architecture Diagram
-🔹 High-Level Architecture
-Diagram
-graph TD
-    A[Client 1] -->|WebSocket| B[Node.js Server Instance 1]
-    C[Client 2] -->|WebSocket| D[Node.js Server Instance 2]
-    
-    B -->|Publish| E[Redis Pub/Sub]
-    D -->|Publish| E
-    
-    E -->|Broadcast| B
-    E -->|Broadcast| D
+## Project Structure
 
-🔹 Dockerized Architecture
-Diagram
-graph LR
-    A[User Browser] --> B[Docker Container - Server 1]
-    A --> C[Docker Container - Server 2]
-    
-    B --> D[Redis Container]
-    C --> D
-    
-    D --> B
-    D --> C
+```
+├── client/
+│   ├── index.html          # Chat UI + Video Call UI
+│   ├── index.css            # Dark theme design system
+│   └── index.js             # WebSocket client + WebRTC logic
+├── server/
+│   ├── src/
+│   │   ├── index.ts         # Entry point, connection handler
+│   │   ├── types.ts         # TypeScript types & enums
+│   │   ├── redis.ts         # Redis Pub/Sub + online user tracking
+│   │   ├── signaling.ts     # WebRTC signaling relay
+│   │   └── utils.ts         # Helpers (parse, broadcast, logging)
+│   ├── .env                 # Environment variables
+│   ├── Dockerfile
+│   ├── package.json
+│   └── tsconfig.json
+├── docker-compose.yml       # 3 WS servers + Redis + Caddy
+├── Caddyfile                # Reverse proxy with sticky sessions
+└── README.md
+```
 
-# ⚙️ How It Works
+## Quick Start
 
-Client connects via WebSocket.
+### Prerequisites
+- Docker & Docker Compose
 
-Server receives message.
+### Run
 
-Message is published to Redis.
+```bash
+# Clone and start
+git clone <repo-url>
+cd Real_Time_Chat_App-main
+docker-compose up --build
+```
 
-Redis broadcasts message to all server instances.
+Open **http://localhost:3000** in your browser.
 
-All connected clients receive the update instantly.
+### Test Multi-User
 
-# ⚡ Features
+1. Open `http://localhost:3000` in Browser 1 → Connect as **Alice**
+2. Open `http://localhost:3000` in Browser 2 (or incognito) → Connect as **Bob**
+3. **Chat**: Send messages between browsers
+4. **Video Call**: Click 📹 **Call** next to a user → Accept/Reject on the other end
+5. **Controls**: Toggle mic 🎤, camera 📷, or end call 📵
 
-💬 Real-time messaging
+## Environment Variables
 
-🔄 Redis-based distributed communication
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | WebSocket server port |
+| `REDIS_URL` | `redis://redis:6379` | Redis connection string |
 
-📦 Docker containerization
+These are set per-instance in `docker-compose.yml`. The `.env` file provides defaults for local development.
 
-🔐 JWT authentication
+## Message Types
 
-🚀 Horizontally scalable architecture
+| Type | Direction | Purpose |
+|------|-----------|---------|
+| `message` | Client ↔ Server | Chat messages |
+| `event` | Client ↔ Server | Join/leave notifications |
+| `user-list` | Server → Client | Online users update |
+| `offer` | Client → Server → Client | WebRTC SDP offer |
+| `answer` | Client → Server → Client | WebRTC SDP answer |
+| `ice-candidate` | Client → Server → Client | ICE connectivity candidate |
+| `call-rejected` | Client → Server → Client | Call rejection |
+| `call-ended` | Client → Server → Client | Call termination |
 
-# 🚀 Running the Application
-Using Docker
-`docker-compose up --build`
+## Features
 
-Without Docker
-`npm install
-npm run dev`
+- ✅ Real-time group chat
+- ✅ 1:1 video calling (WebRTC P2P)
+- ✅ Online users list (cross-server)
+- ✅ Incoming call modal (Accept / Reject)
+- ✅ Mic & Camera toggle
+- ✅ Heartbeat (dead connection cleanup)
+- ✅ Auto-reconnect (5 attempts)
+- ✅ Horizontally scalable (3 instances demo)
+- ✅ Redis Pub/Sub for cross-server sync
+- ✅ Sticky sessions via Caddy
+- ✅ Dark theme UI
+- ✅ Graceful shutdown
 
-# 🎯 Why This Project?
+## License
 
-This project demonstrates:
-
-Real-time event-driven architecture
-
-Distributed system design
-
-Container orchestration fundamentals
-
-Backend scalability principles
-
-#👨‍💻 Author
-
-Shivam Kumar Singh
-Full-Stack Developer | SDE Aspirant
+MIT
