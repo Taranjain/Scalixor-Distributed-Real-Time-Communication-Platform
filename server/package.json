@@ -1,0 +1,29 @@
+{
+  "name": "node-websockets",
+  "version": "1.1.0",
+  "description": "Scalable WebSocket server using ws + Redis",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=19.0.0"
+  },
+  "scripts": {
+  "dev": "ts-node-dev src/index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js",
+  "clean": "rimraf dist"
+},
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/ws": "^8.5.11",
+    "eslint": "^9.6.0",
+    "prettier": "^3.3.3",
+    "rimraf": "^5.0.5",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}

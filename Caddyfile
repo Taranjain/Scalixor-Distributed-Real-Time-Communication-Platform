@@ -1,0 +1,28 @@
+:8080 {
+    root * /srv
+    file_server
+    try_files {path} /index.html
+
+    handle_path /ws* {
+        reverse_proxy ws1:4001 ws2:4002 ws3:4003 {
+            lb_policy round_robin
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+    }
+
+    encode gzip zstd
+
+    log {
+        output stdout
+        level INFO
+    }
+}

@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - app_net
+
+  ws1:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ws1
+    restart: unless-stopped
+    environment:
+      - PORT=4001
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - app_net
+
+  ws2:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ws2
+    restart: unless-stopped
+    environment:
+      - PORT=4002
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - app_net
+
+  ws3:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ws3
+    restart: unless-stopped
+    environment:
+      - PORT=4003
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - app_net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./client:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - ws1
+      - ws2
+      - ws3
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

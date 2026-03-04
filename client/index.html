@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>💬 WebSocket Chat Room</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div id="chat-box">
+        <h2>💬 Chat Application </h2>
+        
+        <div id="connection-status" class="status-disconnected">Disconnected</div>
+
+        <!-- Connect Section -->
+        <div id="connect-section">
+            <input 
+                type="text" 
+                id="username" 
+                placeholder="Enter your username" 
+                autocomplete="off"
+            />
+            <button id="connect-btn">Connect to Chat</button>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chat-section" style="display:none;">
+            <div id="messages"></div>
+            
+            <div id="input-area">
+                <input 
+                    type="text" 
+                    id="message" 
+                    placeholder="Type your message..." 
+                    autocomplete="off"
+                />
+                <button id="send-btn">Send</button>
+                <button id="leave-btn" class="leave-btn">Leave</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+</html>
