@@ -1,0 +1,49 @@
+# Real-Time Chat App — Full Feature Addition
+
+## Phase 1: Database & ORM Setup
+- [x] Add PostgreSQL to [docker-compose.yml](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/docker-compose.yml)
+- [x] Install Prisma + `@prisma/client` + `bcryptjs` + `express` + `jsonwebtoken`
+- [x] Create Prisma schema with all tables
+- [x] Generate Prisma client & create initial migration
+
+## Phase 2: REST API Layer (Express alongside WS)
+- [x] Add Express HTTP server for auth & REST endpoints
+- [x] Update Caddyfile to proxy `/api/*` to backend
+
+## Phase 3: User Auth (Signup / Login)
+- [x] Signup endpoint — hash password, store user
+- [x] Login endpoint — verify password, return JWT
+- [x] WebSocket auth — validate JWT on connection
+- [x] Client: Auth UI (signup/login forms, token storage)
+
+## Phase 4: Room System
+- [x] Prisma: Room model + RoomMember join table
+- [x] REST: Create room, join room by ID, list user's rooms
+- [x] WebSocket: Room-scoped messaging via Redis channels
+- [x] Client: Room list sidebar, create/join room UI, room-scoped chat
+
+## Phase 5: One-to-One Chat
+- [x] REST: Create or get DM conversation
+- [x] WebSocket: DM messaging (private channel)
+- [x] Client: DM thread from user list
+
+## Phase 6: Chat History
+- [x] Save all messages (room + DM) to PostgreSQL
+- [x] REST: Fetch paginated history for a room/DM
+- [x] Client: Load history on room/DM open
+
+## Phase 7: Contact List / Friends
+- [x] Prisma: Friendship model (PENDING/ACCEPTED)
+- [x] REST: Send request, accept/reject, list friends
+- [x] Client: Friends tab, add friend, request UI
+
+## Phase 8: Call Logs
+- [x] Prisma: CallLog model
+- [x] Server: Log call start/end with duration
+- [x] REST: Fetch call history
+- [x] Client: Call history tab
+
+## Phase 9: Verification
+- [x] TypeScript compiles with zero errors
+- [x] Prisma client generates successfully
+- [ ] Docker Compose up — test full flow

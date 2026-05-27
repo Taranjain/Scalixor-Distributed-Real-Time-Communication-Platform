@@ -1,0 +1,39 @@
+:8080 {
+    # API proxy — REST endpoints
+    handle /api/* {
+        reverse_proxy ws1:4001 ws2:4002 ws3:4003 {
+            lb_policy round_robin
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # WebSocket proxy — sticky sessions required
+    handle /ws* {
+        reverse_proxy ws1:4001 ws2:4002 ws3:4003 {
+            lb_policy ip_hash
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Static file server for the frontend
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+    }
+
+    encode gzip zstd
+
+    log {
+        output stdout
+        level INFO
+    }
+}

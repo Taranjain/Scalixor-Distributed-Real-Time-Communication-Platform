@@ -1,0 +1,148 @@
+# Walkthrough: Rooms, Auth, Chat History, Friends & Call Logs
+
+## Summary
+
+Transformed the ephemeral WebSocket chat app into a full-featured platform with persistent storage, user accounts, rooms, DMs, friend lists, and call logs.
+
+**Build status**: ✅ TypeScript compiles with zero errors | ✅ Prisma client generates successfully
+
+---
+
+## Database Schema (PostgreSQL + Prisma)
+
+```mermaid
+erDiagram
+    User ||--o{ RoomMember : "is member of"
+    User ||--o{ Message : "sends"
+    User ||--o{ Friendship : "requests/receives"
+    User ||--o{ CallLog : "makes/receives"
+    Room ||--o{ RoomMember : "has members"
+    Room ||--o{ Message : "contains"
+
+    User {
+        string id PK
+        string username UK
+        string email UK
+        string passwordHash
+        datetime createdAt
+    }
+    Room {
+        string id PK
+        string name
+        boolean isGroup
+        datetime createdAt
+    }
+    RoomMember {
+        string id PK
+        string userId FK
+        string roomId FK
+        datetime joinedAt
+    }
+    Message {
+        string id PK
+        string content
+        string senderId FK
+        string roomId FK
+        datetime createdAt
+    }
+    Friendship {
+        string id PK
+        string requesterId FK
+        string addresseeId FK
+        enum status
+        datetime createdAt
+    }
+    CallLog {
+        string id PK
+        string callerId FK
+        string calleeId FK
+        datetime startedAt
+        datetime endedAt
+        int duration
+        string status
+    }
+```
+
+---
+
+## Files Changed
+
+### Server — New Files
+
+| File | Purpose |
+|------|---------|
+| [schema.prisma](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/prisma/schema.prisma) | 6 models: User, Room, RoomMember, Message, Friendship, CallLog |
+| [migration.sql](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/prisma/migrations/20260403000000_init/migration.sql) | Initial DDL for all tables |
+| [prisma.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/prisma.ts) | Singleton PrismaClient |
+| [auth.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/auth.ts) | bcrypt hashing + JWT sign/verify |
+| [routes.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/routes.ts) | 13 REST endpoints (auth, rooms, DM, friends, calls) |
+
+### Server — Modified Files
+
+| File | Changes |
+|------|---------|
+| [index.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/index.ts) | Express + WS on same port, JWT auth, room-scoped messaging, message persistence |
+| [types.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/types.ts) | Added room types, enriched UserEntry with userId + rooms |
+| [redis.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/redis.ts) | Added room channel pub/sub helpers |
+| [signaling.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/signaling.ts) | Added CallLog tracking on offer/answer/reject/end |
+| [utils.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/utils.ts) | Updated for new UserEntry type, added broadcastToRoom |
+| [package.json](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/package.json) | Added 5 deps + 5 devDeps, Prisma scripts |
+| [Dockerfile](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/Dockerfile) | Added prisma generate + migrate deploy |
+
+### Infrastructure
+
+| File | Changes |
+|------|---------|
+| [docker-compose.yml](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/docker-compose.yml) | Added PostgreSQL service, DATABASE_URL + JWT_SECRET env vars |
+| [Caddyfile](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/Caddyfile) | Added `/api/*` reverse proxy block |
+
+### Client
+
+| File | Changes |
+|------|---------|
+| [index.html](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.html) | Auth screen (login/signup), sidebar (rooms/friends/calls tabs), modals |
+| [index.js](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.js) | Auth, rooms, DMs, friends, call history, room-scoped chat |
+| [index.css](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.css) | All new styles for auth, sidebar tabs, rooms, friends, calls |
+
+---
+
+## REST API Reference
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/auth/signup` | ❌ | Create account |
+| POST | `/api/auth/login` | ❌ | Login → JWT |
+| GET | `/api/rooms` | ✅ | List user's rooms |
+| POST | `/api/rooms` | ✅ | Create room |
+| POST | `/api/rooms/join` | ✅ | Join by roomId |
+| GET | `/api/rooms/:id/messages` | ✅ | Paginated history |
+| POST | `/api/dm` | ✅ | Get/create DM |
+| GET | `/api/friends` | ✅ | List friends |
+| POST | `/api/friends/request` | ✅ | Send request |
+| PUT | `/api/friends/:id/accept` | ✅ | Accept request |
+| DELETE | `/api/friends/:id` | ✅ | Remove friend |
+| GET | `/api/calls` | ✅ | Call history |
+| GET | `/api/health` | ❌ | Health check |
+
+---
+
+## How to Run
+
+```bash
+cd "/Users/taranjain/Downloads/Real_Time_Chat_App-main 2/Real_Time_Chat_App-main"
+docker compose up --build
+```
+
+Open **http://localhost:3000** in your browser.
+
+## pgAdmin Setup
+
+1. Open pgAdmin → **Add New Server**
+2. **General tab**: Name = `ChatApp`
+3. **Connection tab**:
+   - Host: `localhost`
+   - Port: `5432`
+   - Username: `chatuser`
+   - Password: `chatpass`
+4. Browse to **chatdb** → **Schemas** → **public** → **Tables**
+5. You'll see: [User](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/types.ts#131-132), [Room](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/types.ts#48-53), `RoomMember`, [Message](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.js#410-432), `Friendship`, `CallLog`
