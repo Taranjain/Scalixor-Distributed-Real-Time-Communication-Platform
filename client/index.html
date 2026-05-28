@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Distributed real-time communication platform with rooms, chat, video calling, and friends." />
+    <title>🚀 Real-Time Communication Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="editor.style.css">
+    <script src="editor.bundle.js" defer></script>
+</head>
+<body>
+    <!-- ============ AUTH SCREEN ============ -->
+    <div id="auth-screen">
+        <div id="auth-card">
+            <div class="login-logo">🚀</div>
+            <h1>Real-Time Comm Platform</h1>
+            <p class="login-subtitle">Distributed chat & video calling</p>
+
+            <!-- Auth Tabs -->
+            <div class="auth-tabs">
+                <button id="tab-login" class="auth-tab active" data-tab="login">Login</button>
+                <button id="tab-signup" class="auth-tab" data-tab="signup">Sign Up</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="login-form" class="auth-form">
+                <input type="text" id="login-username" placeholder="Username" autocomplete="off" maxlength="20" />
+                <input type="password" id="login-password" placeholder="Password" autocomplete="off" />
+                <button id="login-btn" class="auth-submit-btn">Login</button>
+            </div>
+
+            <!-- Signup Form -->
+            <div id="signup-form" class="auth-form" style="display:none;">
+                <input type="text" id="signup-username" placeholder="Username" autocomplete="off" maxlength="20" />
+                <input type="email" id="signup-email" placeholder="Email" autocomplete="off" />
+                <input type="password" id="signup-password" placeholder="Password (min 6 chars)" autocomplete="off" />
+                <button id="signup-btn" class="auth-submit-btn">Create Account</button>
+            </div>
+
+            <p id="auth-error" class="auth-error"></p>
+        </div>
+    </div>
+
+    <!-- ============ MAIN APP ============ -->
+    <div id="app" style="display:none;">
+        <!-- Left Sidebar: Rooms + Friends + Calls -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-user-info">
+                    <span class="user-avatar-small">👤</span>
+                    <span id="sidebar-username"></span>
+                </div>
+                <button id="logout-btn" class="icon-btn" title="Logout">🚪</button>
+            </div>
+
+            <!-- Sidebar Tabs -->
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="rooms">💬 Rooms</button>
+                <button class="sidebar-tab" data-tab="friends">👥 Friends</button>
+                <button class="sidebar-tab" data-tab="calls">📞 Calls</button>
+            </div>
+
+            <!-- Rooms Tab -->
+            <div id="rooms-tab" class="sidebar-content active">
+                <div class="content-actions">
+                    <button id="create-room-btn" class="action-btn">+ Create Room</button>
+                    <button id="join-room-btn" class="action-btn secondary">🔗 Join Room</button>
+                </div>
+                <ul id="rooms-list"></ul>
+            </div>
+
+            <!-- Friends Tab -->
+            <div id="friends-tab" class="sidebar-content" style="display:none;">
+                <div class="content-actions">
+                    <button id="add-friend-btn" class="action-btn">+ Add Friend</button>
+                </div>
+                <div id="friend-requests" class="friend-section">
+                    <h4>Pending Requests</h4>
+                    <ul id="pending-requests-list"></ul>
+                </div>
+                <div class="friend-section">
+                    <h4>Friends</h4>
+                    <ul id="friends-list"></ul>
+                </div>
+            </div>
+
+            <!-- Call History Tab -->
+            <div id="calls-tab" class="sidebar-content" style="display:none;">
+                <ul id="calls-list"></ul>
+            </div>
+
+            <!-- Online Users (always visible at bottom) -->
+            <div id="online-section">
+                <div class="panel-header">
+                    <h4>🟢 Online</h4>
+                    <span id="user-count" class="badge">0</span>
+                </div>
+                <ul id="users-list"></ul>
+            </div>
+        </aside>
+
+        <!-- Main Content: Chat -->
+        <main id="chat-area">
+            <div id="chat-header">
+                <div class="header-left">
+                    <button id="toggle-sidebar" class="icon-btn" title="Toggle sidebar">☰</button>
+                    <h2 id="chat-room-title">💬 Select a Room</h2>
+                    <span id="room-id-display" class="room-id-badge" title="Click to copy Room ID"></span>
+                </div>
+                <div class="header-right">
+                    <button id="toggle-code-btn" class="icon-btn" title="Toggle Code Editor" style="display:none;">📝</button>
+                    <div id="connection-status" class="status-connected">Connected</div>
+                </div>
+            </div>
+
+            <!-- Welcome / No Room Selected -->
+            <div id="welcome-screen" class="welcome-screen">
+                <div class="welcome-content">
+                    <div class="welcome-icon">💬</div>
+                    <h2>Welcome to the Platform!</h2>
+                    <p>Create a new room or join one to start chatting</p>
+                </div>
+            </div>
+
+            <div id="chat-panels" style="flex: 1; overflow: hidden;">
+                <div id="chat-left-panel">
+                    <div id="messages"></div>
+                    <div id="input-area">
+                        <input
+                            type="text"
+                            id="message"
+                            placeholder="Type your message..."
+                            autocomplete="off"
+                        />
+                        <button id="send-btn">Send</button>
+                    </div>
+                </div>
+                <div id="code-right-panel">
+                    <div id="code-toolbar">
+                        <select id="code-lang-select">
+                            <option value="javascript">JavaScript</option>
+                            <option value="typescript">TypeScript</option>
+                            <option value="python">Python</option>
+                            <option value="html">HTML</option>
+                            <option value="css">CSS</option>
+                            <option value="json">JSON</option>
+                            <option value="java">Java</option>
+                            <option value="cpp">C++</option>
+                            <option value="csharp">C#</option>
+                            <option value="go">Go</option>
+                            <option value="rust">Rust</option>
+                            <option value="sql">SQL</option>
+                            <option value="markdown">Markdown</option>
+                            <option value="xml">XML</option>
+                            <option value="yaml">YAML</option>
+                            <option value="shell">Shell</option>
+                        </select>
+                    </div>
+                    <div id="code-editor-container"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ============ CREATE ROOM MODAL ============ -->
+    <div id="create-room-modal" class="modal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <h2>Create a Room</h2>
+            <input type="text" id="new-room-name" placeholder="Room name" autocomplete="off" maxlength="50" />
+            <div class="modal-actions">
+                <button id="create-room-confirm" class="btn-accept">Create</button>
+                <button id="create-room-cancel" class="btn-reject">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ JOIN ROOM MODAL ============ -->
+    <div id="join-room-modal" class="modal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <h2>Join a Room</h2>
+            <p class="modal-subtitle">Paste the Room ID to join</p>
+            <input type="text" id="join-room-id" placeholder="Room ID (UUID)" autocomplete="off" />
+            <div class="modal-actions">
+                <button id="join-room-confirm" class="btn-accept">Join</button>
+                <button id="join-room-cancel" class="btn-reject">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ ADD FRIEND MODAL ============ -->
+    <div id="add-friend-modal" class="modal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <h2>Add Friend</h2>
+            <input type="text" id="friend-username-input" placeholder="Enter username" autocomplete="off" maxlength="20" />
+            <div class="modal-actions">
+                <button id="add-friend-confirm" class="btn-accept">Send Request</button>
+                <button id="add-friend-cancel" class="btn-reject">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ INCOMING CALL MODAL ============ -->
+    <div id="incoming-call-modal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="call-avatar pulse">📞</div>
+            <h2>Incoming Video Call</h2>
+            <p id="caller-name">Someone is calling...</p>
+            <div class="modal-actions">
+                <button id="accept-call-btn" class="btn-accept">✅ Accept</button>
+                <button id="reject-call-btn" class="btn-reject">❌ Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ VIDEO CALL OVERLAY ============ -->
+    <div id="video-overlay" style="display:none;">
+        <div id="video-container">
+            <video id="remote-video" autoplay playsinline></video>
+            <video id="local-video" autoplay playsinline muted></video>
+            <div id="call-info">
+                <span id="call-peer-name"></span>
+            </div>
+        </div>
+        <div id="call-controls">
+            <button id="toggle-mic-btn" class="control-btn active" title="Toggle Microphone">🎤</button>
+            <button id="toggle-camera-btn" class="control-btn active" title="Toggle Camera">📷</button>
+            <button id="end-call-btn" class="control-btn end-call" title="End Call">📵</button>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+</html>

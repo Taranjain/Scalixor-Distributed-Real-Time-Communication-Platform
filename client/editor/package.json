@@ -1,0 +1,19 @@
+{
+  "name": "code-editor-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.45.0",
+    "y-monaco": "^0.1.5",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.11"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

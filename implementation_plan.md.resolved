@@ -1,0 +1,257 @@
+# Add Rooms, Auth, Chat History, Friends & Call Logs with PostgreSQL + Prisma
+
+The existing app is a distributed WebSocket chat with Redis pub/sub, Caddy reverse proxy, and WebRTC video calling. All state is ephemeral. This plan adds persistent storage (PostgreSQL + Prisma), user authentication, a room system, 1:1 DM chat, chat history, friend lists, and call logs.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **pgAdmin Setup**: You'll connect pgAdmin to the PostgreSQL container. After `docker compose up`, add a new server in pgAdmin:
+> - **Host**: `localhost` | **Port**: `5432` | **Username**: `chatuser` | **Password**: `chatpass` | **DB**: `chatdb`
+
+> [!WARNING]
+> **Breaking change**: The old "enter a username and connect" login is replaced with proper signup/login. Existing client code will be significantly reworked.
+
+---
+
+## Proposed Changes
+
+### Database & Docker Infrastructure
+
+#### [MODIFY] [docker-compose.yml](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/docker-compose.yml)
+- Add a `postgres` service with env vars `POSTGRES_USER=chatuser`, `POSTGRES_PASSWORD=chatpass`, `POSTGRES_DB=chatdb`, port `5432:5432`, and a named volume `pg_data`
+- Add `DATABASE_URL` env var to all `ws*` services pointing to `postgresql://chatuser:chatpass@postgres:5432/chatdb`
+- Add `postgres` to `depends_on` for `ws*` services
+
+---
+
+### Prisma ORM Schema
+
+#### [NEW] [schema.prisma](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/prisma/schema.prisma)
+
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  email        String        @unique
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime      @default(now())
+
+  sentMessages     Message[]     @relation("sender")
+  roomMemberships  RoomMember[]
+  sentRequests     Friendship[]  @relation("requester")
+  receivedRequests Friendship[]  @relation("addressee")
+  callerLogs       CallLog[]    @relation("caller")
+  calleeLogs       CallLog[]    @relation("callee")
+}
+
+model Room {
+  id        String       @id @default(uuid())
+  name      String
+  isGroup   Boolean      @default(true)  // false = DM
+  createdAt DateTime     @default(now())
+
+  members   RoomMember[]
+  messages  Message[]
+}
+
+model RoomMember {
+  id       String   @id @default(uuid())
+  userId   String
+  roomId   String
+  joinedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@unique([userId, roomId])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  content   String
+  senderId  String
+  roomId    String
+  createdAt DateTime @default(now())
+
+  sender User @relation("sender", fields: [senderId], references: [id])
+  room   Room @relation(fields: [roomId], references: [id])
+
+  @@index([roomId, createdAt])
+}
+
+model Friendship {
+  id          String           @id @default(uuid())
+  requesterId String
+  addresseeId String
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+
+  requester User @relation("requester", fields: [requesterId], references: [id])
+  addressee User @relation("addressee", fields: [addresseeId], references: [id])
+
+  @@unique([requesterId, addresseeId])
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model CallLog {
+  id         String   @id @default(uuid())
+  callerId   String
+  calleeId   String
+  startedAt  DateTime @default(now())
+  endedAt    DateTime?
+  duration   Int?     // seconds
+  status     String   // "completed", "missed", "rejected"
+
+  caller User @relation("caller", fields: [callerId], references: [id])
+  callee User @relation("callee", fields: [calleeId], references: [id])
+
+  @@index([callerId])
+  @@index([calleeId])
+}
+```
+
+---
+
+### Server Dependencies & Config
+
+#### [MODIFY] [package.json](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/package.json)
+- Add dependencies: `@prisma/client`, `express`, `bcryptjs`, `jsonwebtoken`, `cors`
+- Add devDependencies: `prisma`, `@types/express`, `@types/bcryptjs`, `@types/jsonwebtoken`, `@types/cors`
+- Add script: `"prisma:migrate": "prisma migrate deploy"`
+
+#### [MODIFY] [Dockerfile](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/Dockerfile)
+- Add `RUN npx prisma generate` after npm install
+- CMD becomes: run migrations then start
+
+#### [MODIFY] [tsconfig.json](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/tsconfig.json)
+- No changes needed (already compatible)
+
+---
+
+### Server Source Code
+
+#### [NEW] [prisma.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/prisma.ts)
+- Singleton PrismaClient instance
+
+#### [NEW] [auth.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/auth.ts)
+- `hashPassword(password)` / `verifyPassword(password, hash)` using bcryptjs
+- `generateToken(userId, username)` / `verifyToken(token)` using JWT
+- JWT secret from env var `JWT_SECRET`
+
+#### [NEW] [routes.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/routes.ts)
+Express router with these endpoints:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/signup` | Create user account |
+| POST | `/api/auth/login` | Login, return JWT |
+| GET | `/api/rooms` | List user's rooms (auth required) |
+| POST | `/api/rooms` | Create a room |
+| POST | `/api/rooms/join` | Join room by ID |
+| GET | `/api/rooms/:id/messages` | Paginated chat history |
+| POST | `/api/dm` | Get or create DM room with another user |
+| GET | `/api/friends` | List friends |
+| POST | `/api/friends/request` | Send friend request |
+| PUT | `/api/friends/:id/accept` | Accept friend request |
+| DELETE | `/api/friends/:id` | Reject/remove friend |
+| GET | `/api/calls` | List call history |
+
+#### [MODIFY] [types.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/types.ts)
+- Add `RoomMessage`, `JoinRoom`, `LeaveRoom`, `DmMessage` message types
+- Add room-related payload types
+
+#### [MODIFY] [index.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/index.ts)
+- Mount Express app on same port (HTTP + WS share port using `server.listen`)
+- Authenticate WebSocket connections via JWT token in URL query param
+- Handle room-scoped messages: publish to `room:{roomId}` Redis channel
+- Handle DM messages: publish to `dm:{roomId}` Redis channel
+- Save messages to PostgreSQL via Prisma
+- On video call start/end, create CallLog entries
+
+#### [MODIFY] [redis.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/redis.ts)
+- Dynamic room channel subscription/unsubscription
+- Add helpers: `subscribeToRoom(roomId)`, `unsubscribeFromRoom(roomId)`
+
+#### [MODIFY] [signaling.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/signaling.ts)
+- Log call events to `CallLog` table via Prisma
+
+---
+
+### Caddy Reverse Proxy
+
+#### [MODIFY] [Caddyfile](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/Caddyfile)
+- Add `handle /api/*` block to proxy REST API requests to backend servers
+
+---
+
+### Client (Complete Rework)
+
+#### [MODIFY] [index.html](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.html)
+- Replace simple username login with signup/login forms (with tabs)
+- Add sidebar with: Rooms list, Friends list, Call History tabs
+- Add room creation modal, join room modal
+- Add DM conversation view
+- Keep existing video call overlay
+
+#### [MODIFY] [index.js](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.js)
+- Add `AuthManager` class — signup, login, token storage in localStorage
+- Add `RoomManager` — create room, join room, switch rooms, load history
+- Add `FriendManager` — send/accept requests, list friends
+- Add `CallLogManager` — display call history
+- Modify [ChatClient](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.js#2-696) — authenticate WS with token, send messages scoped to roomId
+- DM: click user → open/create DM room
+
+#### [MODIFY] [index.css](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.css)
+- Auth screen styles (signup/login tabs)
+- Room list, friend list, call history sidebar tabs
+- DM conversation styling
+- Room creation/join modals
+
+---
+
+## pgAdmin Setup Instructions
+
+After running `docker compose up`:
+1. Open pgAdmin → **Add New Server**
+2. **General tab**: Name = `ChatApp`
+3. **Connection tab**: Host = `localhost`, Port = `5432`, Username = `chatuser`, Password = `chatpass`
+4. Browse to `chatdb` → **Schemas** → **Tables** to see: [User](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/types.ts#104-105), `Room`, `RoomMember`, [Message](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.js#116-133), `Friendship`, `CallLog`
+
+---
+
+## Verification Plan
+
+### Automated (Docker)
+```bash
+cd "/Users/taranjain/Downloads/Real_Time_Chat_App-main 2/Real_Time_Chat_App-main"
+docker compose up --build
+```
+All services (redis, postgres, ws1, ws2, ws3, caddy) should start healthy.
+
+### Manual Testing (Browser at http://localhost:3000)
+1. **Signup**: Create 2 users (UserA, UserB) via signup form
+2. **Login**: Login as UserA
+3. **Create Room**: Click "Create Room", name it "Test Room", note the Room ID
+4. **Join Room**: Login as UserB in another browser/incognito, paste Room ID to join
+5. **Group Chat**: Send messages in both browsers — verify real-time delivery and history persistence
+6. **DM**: UserA clicks UserB in the user list → sends a DM → verify it appears only for UserB
+7. **Chat History**: Refresh page, re-enter room → previous messages load from DB
+8. **Friends**: UserA sends friend request to UserB → UserB accepts → both see each other in Friends list
+9. **Video Call**: UserA calls UserB → accept → verify WebRTC works → end call
+10. **Call Logs**: Check call history tab shows the completed call
+11. **pgAdmin**: Connect to DB and verify data in [User](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/server/src/types.ts#104-105), [Message](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main%202/Real_Time_Chat_App-main/client/index.js#116-133), `Room`, `Friendship`, `CallLog` tables

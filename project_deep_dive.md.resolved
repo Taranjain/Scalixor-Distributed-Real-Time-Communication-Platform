@@ -1,0 +1,638 @@
+# 🚀 Project Deep-Dive: Distributed Real-Time Communication Platform
+
+## Table of Contents
+1. [What This Project Is](#what-this-project-is)
+2. [High-Level Architecture](#high-level-architecture)
+3. [WebSocket — The Backbone](#websocket--the-backbone)
+4. [Redis Pub/Sub — Cross-Server Sync](#redis-pubsub--cross-server-sync)
+5. [Caddy — Reverse Proxy & Load Balancer](#caddy--reverse-proxy--load-balancer)
+6. [WebRTC — How Video Calling Works](#webrtc--how-video-calling-works)
+7. [Why No Database?](#why-no-database)
+8. [How to Build This From Scratch](#how-to-build-this-from-scratch)
+9. [Complete Data Flow Diagrams](#complete-data-flow-diagrams)
+
+---
+
+## What This Project Is
+
+This is a **distributed real-time communication platform** with two features:
+1. **Group Chat** — everyone in the room sees everyone's messages
+2. **1:1 Video Calling** — two users can video call each other directly (peer-to-peer)
+
+The "distributed" part means you can run **multiple copies of the server** and everything still works. This is how production apps like Slack, Discord, and Zoom scale to millions of users.
+
+---
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     BROWSER CLIENTS                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │  Alice    │  │   Bob    │  │  Charlie │              │
+│  │(Browser 1)│  │(Browser 2)│  │(Browser 3)│              │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘              │
+│        │ WebSocket     │ WebSocket     │ WebSocket         │
+└────────┼───────────────┼───────────────┼──────────────────┘
+         │               │               │
+         ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────┐
+│              CADDY (Reverse Proxy / Load Balancer)       │
+│              Port 3000 → Routes to backend servers       │
+│              Serves static files (HTML/CSS/JS)           │
+│              Uses ip_hash for sticky sessions            │
+└─────┬──────────────────┬──────────────────┬─────────────┘
+      │                  │                  │
+      ▼                  ▼                  ▼
+┌──────────┐      ┌──────────┐      ┌──────────┐
+│   ws1    │      │   ws2    │      │   ws3    │
+│ Port 4001│      │ Port 4002│      │ Port 4003│
+│ Node.js  │      │ Node.js  │      │ Node.js  │
+└─────┬────┘      └─────┬────┘      └─────┬────┘
+      │                  │                  │
+      └──────────────────┼──────────────────┘
+                         │ Pub/Sub
+                         ▼
+                  ┌──────────────┐
+                  │    REDIS     │
+                  │  Port 6379   │
+                  │ • Pub/Sub    │
+                  │ • User Set   │
+                  └──────────────┘
+```
+
+**After video call signaling completes:**
+```
+Alice 🎥 ←────── Direct P2P (WebRTC) ──────→ 🎥 Bob
+          (Video/audio NEVER goes through the server)
+```
+
+---
+
+## WebSocket — The Backbone
+
+### What is WebSocket?
+HTTP is **request-response** — the client asks, the server answers, connection closes. WebSocket is a **persistent, bidirectional** connection. Once opened, both client and server can send messages to each other at any time.
+
+### Why WebSocket here?
+- **Chat**: When Alice sends a message, the server needs to instantly push it to Bob and Charlie — without them asking for it
+- **Signaling**: WebRTC needs a "meeting point" to exchange connection info before video starts
+- **User presence**: Server can instantly notify everyone when someone joins/leaves
+
+### How it works in our code
+
+**Client side** ([index.js](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/client/index.js)):
+```js
+// Browser opens a persistent connection to the server
+const wsUrl = `ws://localhost:3000/ws`;
+this.socket = new WebSocket(wsUrl);
+
+// Server can push messages anytime
+this.socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    // handle chat, events, signaling...
+};
+
+// Client can send messages anytime
+this.socket.send(JSON.stringify({ type: "message", user: "Alice", content: "Hello!" }));
+```
+
+**Server side** ([index.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/server/src/index.ts)):
+```ts
+// ws library creates a WebSocket server
+const wss = new WebSocketServer({ port: 4001, host: "0.0.0.0" });
+
+// Fires when a browser connects
+wss.on("connection", (ws) => {
+    ws.on("message", (data) => {
+        // Process incoming message from this client
+    });
+});
+```
+
+### Heartbeat System
+WebSocket connections can silently die (network drops, laptop sleeps). The **heartbeat** system detects this:
+
+```
+Every 30 seconds:
+  Server → sends PING to each client
+  Client → automatically responds with PONG
+  
+If no PONG received → connection is dead → server cleans up
+```
+
+This is handled in [index.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/server/src/index.ts) with `setInterval` and `ws.ping()`.
+
+---
+
+## Redis Pub/Sub — Cross-Server Sync
+
+### The Problem
+Imagine Alice is connected to **ws1** and Bob is connected to **ws2**. Alice sends a message. **ws1 only knows about its own clients** — it doesn't know Bob exists on ws2. How does Bob get the message?
+
+### The Solution: Redis Pub/Sub
+Redis acts as a **message broker** between all servers:
+
+```
+Alice's message "Hello!"
+        │
+        ▼
+   ws1 receives it
+        │
+        ▼
+   ws1 PUBLISHES to Redis channel "chat_channel"
+        │
+        ▼
+   Redis delivers to ALL subscribers
+        │
+   ┌────┼────┐
+   ▼    ▼    ▼
+  ws1  ws2  ws3    ← Every server gets the message
+   │    │    │
+   ▼    ▼    ▼
+ All their local clients receive it
+ (Alice sees her own message, Bob sees it too)
+```
+
+### Two Channels
+
+| Channel | Purpose | Delivery |
+|---------|---------|----------|
+| `chat_channel` | Chat messages, join/leave events, user lists | **Broadcast** to ALL clients on all servers |
+| `signaling_channel` | WebRTC offer/answer/ICE | **Targeted** — only delivered to specific user |
+
+### How it works in our code
+
+**Publishing** ([redis.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/server/src/redis.ts)):
+```ts
+// When Alice sends a chat message, the server publishes it:
+await publisher.publish("chat_channel", JSON.stringify(payload));
+```
+
+**Subscribing** ([redis.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/server/src/redis.ts)):
+```ts
+// Every server subscribes to both channels on startup:
+await subscriber.subscribe("chat_channel", "signaling_channel");
+```
+
+**Listening** ([index.ts](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/server/src/index.ts)):
+```ts
+subscriber.on("message", (channel, message) => {
+    if (channel === "chat_channel") {
+        // Send to ALL local WebSocket clients
+        broadcastToAll(wss, message);
+    } else if (channel === "signaling_channel") {
+        // Send only to the TARGET user (if they're on this server)
+        handleSignalingFromRedis(message, userMap);
+    }
+});
+```
+
+### Online Users Tracking (Redis Set)
+Each server only knows its own users. To show a **global** online list, we use a **Redis Set**:
+
+```ts
+// When Alice joins on ws1:
+await publisher.sadd("online_users", "Alice");    // Add to Redis Set
+
+// When Alice leaves:
+await publisher.srem("online_users", "Alice");    // Remove from Redis Set
+
+// To get ALL online users across ALL servers:
+const users = await publisher.smembers("online_users");  // Returns ["Alice", "Bob", "Charlie"]
+```
+
+---
+
+## Caddy — Reverse Proxy & Load Balancer
+
+### What is a Reverse Proxy?
+Users connect to **one URL** (`localhost:3000`). Behind the scenes, there are **3 separate servers** (ws1, ws2, ws3). Caddy sits in front and **routes** requests to the right place.
+
+### What Caddy Does (Two Jobs)
+
+**Job 1: Serve static files (Frontend)**
+```
+Browser requests: http://localhost:3000/
+Caddy responds:   Serves index.html from the client/ folder
+
+Browser requests: http://localhost:3000/index.css
+Caddy responds:   Serves index.css from the client/ folder
+```
+
+**Job 2: Proxy WebSocket connections (Backend)**
+```
+Browser connects: ws://localhost:3000/ws
+Caddy proxies to: ws1:4001 OR ws2:4002 OR ws3:4003
+```
+
+### Load Balancing: ip_hash
+
+When 3 users connect, Caddy must decide which backend server each goes to. We use `ip_hash`:
+
+```
+ip_hash = hash(client's IP address) → always maps to SAME server
+
+Alice (IP: 192.168.1.10) → hash → always goes to ws1
+Bob   (IP: 192.168.1.20) → hash → always goes to ws2
+```
+
+**Why ip_hash (sticky sessions)?** Because WebSocket is a **persistent connection**. If Alice connects to ws1, her entire session must stay on ws1. If Caddy randomly changed servers mid-connection, the WebSocket would break.
+
+### Our Caddyfile Explained
+
+```caddyfile
+:8080 {
+    # FIRST: Handle WebSocket — MUST come before file_server
+    # Otherwise, /ws path would match index.html via try_files
+    handle /ws* {
+        reverse_proxy ws1:4001 ws2:4002 ws3:4003 {
+            lb_policy ip_hash          # Sticky sessions
+            header_up Host {host}      # Forward original host header
+            header_up X-Real-IP {remote_host}  # Forward client IP
+        }
+    }
+
+    # SECOND: Everything else → serve static files
+    handle {
+        root * /srv                    # Files are in /srv (mounted from client/)
+        try_files {path} /index.html   # SPA fallback
+        file_server                    # Serve the files
+    }
+}
+```
+
+> [!IMPORTANT]
+> The order matters! We had a bug where `file_server` was catching `/ws` requests and serving [index.html](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/client/index.html) instead of proxying to the backend. The fix was putting the WebSocket [handle](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/client/index.js#418-439) block **first**.
+
+---
+
+## WebRTC — How Video Calling Works
+
+This is the most complex part. Let's break it down step by step.
+
+### What is WebRTC?
+**Web Real-Time Communication** — a browser API that allows **direct peer-to-peer** audio/video streaming between two browsers, **without going through a server**.
+
+### Why "Without a Server"?
+Sending video through a server would:
+- Add latency (video goes: Alice → Server → Bob instead of Alice → Bob)
+- Cost massive bandwidth (server handles ALL video traffic)
+- Not scale (1000 calls = 1000x video data through your server)
+
+With WebRTC, after the initial setup, **video flows directly between browsers**.
+
+### The 5-Step WebRTC Flow
+
+```
+Step 1: SIGNALING (via our WebSocket server)
+   Alice and Bob exchange connection info through our server
+
+Step 2: STUN (via Google's server)
+   Each browser discovers its own public IP address
+
+Step 3: ICE CANDIDATES
+   Browsers exchange possible connection routes
+
+Step 4: PEER CONNECTION
+   Browsers establish a direct connection
+
+Step 5: MEDIA STREAMING
+   Video/audio flows directly P2P
+```
+
+### Step 1: Signaling (Our Server's Role)
+
+Two browsers can't just magically find each other on the internet. They need a **meeting point** to exchange connection details. That's our WebSocket server.
+
+```
+Alice clicks "📹 Call Bob"
+        │
+        ▼
+Alice's browser creates an SDP OFFER
+(SDP = Session Description Protocol — describes what media Alice can send/receive)
+        │
+        ▼
+Sent via WebSocket → Our Server → Redis → Bob's Server → Bob's browser
+        │
+        ▼
+Bob sees "Incoming Call" modal → clicks Accept
+        │
+        ▼
+Bob's browser creates an SDP ANSWER
+        │
+        ▼
+Sent via WebSocket → Our Server → Redis → Alice's Server → Alice's browser
+```
+
+**SDP Offer/Answer in our code** ([index.js](file:///Users/taranjain/Downloads/Real_Time_Chat_App-main/client/index.js)):
+```js
+// Alice creates offer
+const offer = await this.peerConnection.createOffer();
+await this.peerConnection.setLocalDescription(offer);
+this.socket.send(JSON.stringify({
+    type: "offer", from: "Alice", to: "Bob", sdp: offer
+}));
+
+// Bob receives offer, creates answer
+await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+const answer = await this.peerConnection.createAnswer();
+await this.peerConnection.setLocalDescription(answer);
+this.socket.send(JSON.stringify({
+    type: "answer", from: "Bob", to: "Alice", sdp: answer
+}));
+```
+
+### Step 2: STUN Server
+
+**Problem**: Your browser knows its **local IP** (like `192.168.1.10`), but it doesn't know its **public IP** (the one the rest of the internet sees). For P2P to work, both browsers need to know their public IPs.
+
+**Solution**: A STUN (Session Traversal Utilities for NAT) server tells your browser its public IP.
+
+```
+Alice's Browser → "What's my public IP?" → stun:stun.l.google.com:19302
+STUN Server → "Your public IP is 103.21.45.67, port 54321" → Alice's Browser
+```
+
+**In our code:**
+```js
+this.iceServers = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },   // Google's free STUN server
+        { urls: "stun:stun1.l.google.com:19302" },
+    ],
+};
+this.peerConnection = new RTCPeerConnection(this.iceServers);
+```
+
+> [!NOTE]
+> Google provides free STUN servers. STUN just tells you your IP — it doesn't relay any video data. For production, you'd also add a **TURN server** as fallback for users behind strict firewalls.
+
+### Step 3: ICE Candidates
+
+**ICE** (Interactive Connectivity Establishment) is the process of finding the best network path between two browsers. Each browser generates multiple "candidates" (possible ways to reach it):
+
+```
+Candidate 1: Local IP — 192.168.1.10:54321 (only works on same network)
+Candidate 2: Public IP — 103.21.45.67:54321 (works over internet via STUN)
+Candidate 3: TURN relay — turn.example.com:443 (fallback through relay server)
+```
+
+These candidates are exchanged through our WebSocket server:
+
+```js
+// When browser discovers a new ICE candidate
+this.peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+        this.socket.send(JSON.stringify({
+            type: "ice-candidate",
+            from: this.username,
+            to: this.callTarget,
+            candidate: event.candidate,   // The network route info
+        }));
+    }
+};
+
+// When we receive the other person's ICE candidate
+await this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+```
+
+### Step 4 & 5: Connection & Media
+
+Once both browsers have exchanged SDP + ICE candidates, WebRTC automatically:
+1. Tests all candidate pairs to find the best route
+2. Establishes a direct encrypted connection (DTLS/SRTP)
+3. Starts streaming video/audio P2P
+
+```js
+// When remote video arrives
+this.peerConnection.ontrack = (event) => {
+    this.remoteVideo.srcObject = event.streams[0];  // Show remote video
+};
+
+// We added our local tracks earlier
+this.localStream.getTracks().forEach((track) => {
+    this.peerConnection.addTrack(track, this.localStream);
+});
+```
+
+### Complete WebRTC Timeline
+
+```
+Time    Alice                     Server/Redis              Bob
+─────   ─────                     ────────────              ───
+T1      Click "Call Bob"
+T2      getUserMedia() → camera ON
+T3      Create RTCPeerConnection
+T4      createOffer()
+T5      setLocalDescription(offer)
+T6      Send offer ──────────────→ Relay via Redis ────────→ Receive offer
+T7                                                           Show "Incoming Call"
+T8                                                           Click "Accept"
+T9                                                           getUserMedia() → camera ON
+T10                                                          Create RTCPeerConnection
+T11                                                          setRemoteDescription(offer)
+T12                                                          createAnswer()
+T13                                                          setLocalDescription(answer)
+T14     Receive answer ←────────── Relay via Redis ←──────── Send answer
+T15     setRemoteDescription(answer)
+T16     Send ICE candidate ──────→ Relay via Redis ────────→ addIceCandidate()
+T17     addIceCandidate() ←──────── Relay via Redis ←──────── Send ICE candidate
+T18     ═══════════════ DIRECT P2P CONNECTION ESTABLISHED ═══════════════
+T19     🎥 Video flows directly Alice ←────────────────────→ Bob 🎥
+        (Server is NO LONGER involved in media transfer)
+```
+
+---
+
+## Why No Database?
+
+This project intentionally has **no database** (no MongoDB, PostgreSQL, etc.). Here's why:
+
+| Feature | Storage Used | Why Not a Database? |
+|---------|-------------|---------------------|
+| Chat messages | **None** — messages are ephemeral | Like a walkie-talkie — real-time only, no history |
+| Online users | **Redis Set** (in-memory) | Users are temporary; the set resets when Redis restarts |
+| Video calls | **None** — P2P direct | Video never touches the server |
+| User accounts | **None** — just a username | No authentication — users pick a name and join |
+
+### When Would You Add a Database?
+If you wanted to add:
+- **Chat history** → Store messages in MongoDB/PostgreSQL
+- **User accounts & login** → User table with passwords (hashed)
+- **Contact lists / Friends** → Relationship table
+- **Call logs** → Record who called whom and when
+- **File sharing** → Store file metadata + use object storage (S3)
+
+---
+
+## How to Build This From Scratch
+
+### Phase 1: Basic Chat Server (No Scaling)
+
+```
+1. mkdir server && cd server && npm init -y
+2. npm install ws dotenv typescript @types/ws @types/node ts-node-dev
+3. Create src/index.ts:
+   - Create WebSocketServer on port 5000
+   - On "connection" → log new client
+   - On "message" → broadcast to ALL connected clients
+4. Create client/index.html + index.js:
+   - Connect to ws://localhost:5000
+   - Send messages, display received messages
+5. Test: Open 2 browser tabs → chat works!
+```
+
+### Phase 2: Add Redis for Horizontal Scaling
+
+```
+1. npm install ioredis
+2. Start Redis: docker run -p 6379:6379 redis:7-alpine
+3. In server:
+   - Create Redis publisher + subscriber
+   - Instead of broadcasting directly, PUBLISH to Redis
+   - Subscribe to Redis channel → on message → broadcast to local clients
+4. Now you can run 2 server instances on different ports
+   → Messages sync across both!
+```
+
+### Phase 3: Add Docker + Caddy
+
+```
+1. Create Dockerfile for the server
+2. Create docker-compose.yml:
+   - Redis container
+   - 3x server containers (ws1, ws2, ws3)
+   - Caddy container
+3. Create Caddyfile:
+   - Serve client/ as static files
+   - Proxy /ws to the 3 backend servers
+4. docker-compose up --build → Everything runs!
+```
+
+### Phase 4: Add WebRTC Video Calling
+
+```
+1. Server side:
+   - Add new message types: offer, answer, ice-candidate
+   - Add user registry: Map<username, WebSocket>
+   - Add signaling_channel in Redis for targeted delivery
+   - Route signaling messages to specific users
+2. Client side:
+   - Add getUserMedia() for camera/mic
+   - Add RTCPeerConnection with STUN servers
+   - Implement offer → answer → ICE exchange
+   - Add video elements + call controls UI
+```
+
+### Phase 5: Polish
+
+```
+1. Add heartbeat (ping/pong) for dead connection detection
+2. Add online users list via Redis Set
+3. Add incoming call modal (accept/reject)
+4. Add mic/camera toggle
+5. Add graceful shutdown
+6. Add proper TypeScript types
+7. Write README
+```
+
+---
+
+## Complete Data Flow Diagrams
+
+### Flow 1: Sending a Chat Message
+
+```
+Alice types "Hello" and clicks Send
+        │
+        ▼
+Browser sends via WebSocket:
+{ type: "message", user: "Alice", content: "Hello" }
+        │
+        ▼
+ws1 receives → adds UUID, timestamp, server port
+        │
+        ▼
+ws1 PUBLISHES to Redis "chat_channel":
+{ id: "uuid-123", type: "message", user: "Alice",
+  content: "Hello", timestamp: 1709544000, server: 4001 }
+        │
+        ▼
+Redis delivers to ALL subscribers: ws1, ws2, ws3
+        │
+   ┌────┼────┐
+   ▼    ▼    ▼
+  ws1  ws2  ws3 each call broadcastToAll()
+   │    │    │
+   ▼    ▼    ▼
+Every connected browser shows: Alice: Hello
+```
+
+### Flow 2: User Joins
+
+```
+Bob enters username "Bob" and clicks Connect
+        │
+        ▼
+WebSocket connection opens to ws2 (via Caddy ip_hash)
+        │
+        ▼
+Browser sends: { type: "event", action: "joined", user: "Bob" }
+        │
+        ▼
+ws2 receives:
+  1. userMap.set("Bob", ws)          ← Track locally
+  2. Redis SADD "online_users" "Bob" ← Track globally
+  3. Redis PUBLISH "chat_channel" { type: "event", action: "joined", user: "Bob" }
+  4. Redis SMEMBERS "online_users" → ["Alice", "Bob"]
+  5. Redis PUBLISH "chat_channel" { type: "user-list", users: ["Alice", "Bob"] }
+        │
+        ▼
+All servers receive → broadcast to all clients
+→ Everyone sees "Bob joined" + updated users list
+```
+
+### Flow 3: Video Call Signaling
+
+```
+Alice clicks "📹 Call" next to Bob
+        │
+        ▼
+Alice's browser:
+  1. getUserMedia() → camera + mic ON
+  2. new RTCPeerConnection(stunServers)
+  3. addTrack(localVideo)
+  4. createOffer() → SDP offer
+  5. setLocalDescription(offer)
+  6. WebSocket send: { type: "offer", from: "Alice", to: "Bob", sdp: {...} }
+        │
+        ▼
+ws1 receives → PUBLISH to Redis "signaling_channel"
+        │
+        ▼
+Redis delivers to ws1, ws2, ws3
+        │
+        ▼
+ws2 checks: is "Bob" in my userMap? YES → send to Bob's WebSocket
+ws1, ws3: "Bob" not in my userMap → ignore
+        │
+        ▼
+Bob's browser receives offer → shows incoming call modal
+Bob clicks Accept → getUserMedia() → createAnswer() → send answer back
+        │
+        ▼
+Same Redis relay in reverse → Alice receives answer
+        │
+        ▼
+ICE candidates exchanged same way (multiple round trips)
+        │
+        ▼
+Direct P2P connection established
+🎥 Video flows: Alice ←→ Bob (server not involved)
+```
+
+---
+
+> [!TIP]
+> **Key Insight**: The server's job is to be a **matchmaker**, not a **middleman**. It helps Alice and Bob find each other (signaling), but once they're connected, it steps aside and lets them talk directly (P2P). This is what makes WebRTC so efficient and scalable.
