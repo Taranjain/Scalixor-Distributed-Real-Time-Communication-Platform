@@ -1,11 +1,67 @@
 // ═══════════════════════════════════════════════════════
-//  Real-Time Communication Platform — Full Client
+//  Scalixor — Full Client
 // ═══════════════════════════════════════════════════════
 
 const API_BASE = `${window.location.protocol}//${window.location.host}/api`;
 
+/* ============================================================
+   THEME MANAGER
+   ============================================================ */
+class ThemeManager {
+    constructor() {
+        this.key = "scalixor-theme";
+        this.init();
+    }
+
+    init() {
+        const saved = localStorage.getItem(this.key);
+        if (saved === "light" || saved === "dark") {
+            this.set(saved);
+        } else {
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            this.set(prefersDark ? "dark" : "light");
+        }
+    }
+
+    toggle() {
+        const current = document.documentElement.getAttribute("data-theme") || "light";
+        const next = current === "light" ? "dark" : "light";
+        this.set(next);
+    }
+
+    set(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem(this.key, theme);
+    }
+}
+
+/* ============================================================
+   ICON HELPER
+   ============================================================ */
+function createIcon(name, size = 16) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.style.flexShrink = "0";
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", `#icon-${name}`);
+    svg.appendChild(use);
+    return svg;
+}
+
+/* ============================================================
+   CHAT CLIENT
+   ============================================================ */
 class ChatClient {
     constructor() {
+        this.theme = new ThemeManager();
+
         // Auth
         this.token = localStorage.getItem("token") || "";
         this.username = localStorage.getItem("username") || "";
@@ -37,7 +93,7 @@ class ChatClient {
         this.cameraEnabled = true;
         this.incomingOffer = null;
         this.incomingCaller = null;
-        this.pendingIceCandidates = [];  // Queue ICE candidates until remote description is set
+        this.pendingIceCandidates = [];
 
         this.iceServers = {
             iceServers: [
@@ -56,6 +112,8 @@ class ChatClient {
             this.loadRooms();
             this.loadFriends();
             this.loadCallHistory();
+        } else {
+            this.showLanding();
         }
     }
 
@@ -64,9 +122,18 @@ class ChatClient {
     ==================================== */
 
     cacheDOMElements() {
+        // Landing
+        this.landingPage = document.getElementById("landing-page");
+        this.landingLoginBtn = document.getElementById("landing-login-btn");
+        this.heroCtaBtn = document.getElementById("hero-cta-btn");
+
+        // Theme
+        this.themeToggle = document.getElementById("theme-toggle");
+
         // Auth
         this.authScreen = document.getElementById("auth-screen");
         this.authCard = document.getElementById("auth-card");
+        this.authBackBtn = document.getElementById("auth-back-btn");
         this.tabLogin = document.getElementById("tab-login");
         this.tabSignup = document.getElementById("tab-signup");
         this.loginForm = document.getElementById("login-form");
@@ -84,6 +151,7 @@ class ChatClient {
         this.app = document.getElementById("app");
         this.sidebar = document.getElementById("sidebar");
         this.sidebarUsername = document.getElementById("sidebar-username");
+        this.sidebarAvatar = document.getElementById("sidebar-avatar");
         this.logoutBtn = document.getElementById("logout-btn");
 
         // Sidebar tabs
@@ -165,6 +233,14 @@ class ChatClient {
     ==================================== */
 
     initEventListeners() {
+        // Theme toggle
+        this.themeToggle.addEventListener("click", () => this.theme.toggle());
+
+        // Landing page
+        this.landingLoginBtn.addEventListener("click", () => this.showAuth());
+        this.heroCtaBtn.addEventListener("click", () => this.showAuth());
+        this.authBackBtn.addEventListener("click", () => this.showLanding());
+
         // Auth tabs
         this.tabLogin.addEventListener("click", () => this.switchAuthTab("login"));
         this.tabSignup.addEventListener("click", () => this.switchAuthTab("signup"));
@@ -244,6 +320,30 @@ class ChatClient {
 
         // Code language change
         this.codeLangSelect.addEventListener("change", () => this.onCodeLanguageChange());
+    }
+
+    /* ====================================
+       NAVIGATION
+    ==================================== */
+
+    showLanding() {
+        this.landingPage.style.display = "block";
+        this.authScreen.classList.remove("active");
+        this.app.classList.remove("active");
+    }
+
+    showAuth() {
+        this.landingPage.style.display = "none";
+        this.authScreen.classList.add("active");
+        this.app.classList.remove("active");
+    }
+
+    showApp() {
+        this.landingPage.style.display = "none";
+        this.authScreen.classList.remove("active");
+        this.app.classList.add("active");
+        this.sidebarUsername.textContent = this.username;
+        this.sidebarAvatar.textContent = this.username.charAt(0).toUpperCase();
     }
 
     /* ====================================
@@ -378,38 +478,21 @@ class ChatClient {
         localStorage.removeItem("username");
         localStorage.removeItem("userId");
 
-        this.showAuth();
+        this.showLanding();
     }
 
     /* ====================================
        UI HELPERS
     ==================================== */
 
-    showApp() {
-        this.authScreen.style.display = "none";
-        this.app.style.display = "flex";
-        this.sidebarUsername.textContent = this.username;
-    }
-
-    showAuth() {
-        this.app.style.display = "none";
-        this.authScreen.style.display = "flex";
-        this.loginUsername.value = "";
-        this.loginPassword.value = "";
-        this.signupUsername.value = "";
-        this.signupEmail.value = "";
-        this.signupPassword.value = "";
-        this.authError.textContent = "";
-    }
-
     showModal(modal) {
-        modal.style.display = "flex";
+        modal.classList.add("active");
         const input = modal.querySelector("input");
         if (input) { input.value = ""; input.focus(); }
     }
 
     hideModal(modal) {
-        modal.style.display = "none";
+        modal.classList.remove("active");
     }
 
     updateStatus(message, isConnected = false) {
@@ -439,7 +522,6 @@ class ChatClient {
         this.codePanelVisible = !this.codePanelVisible;
 
         if (this.codePanelVisible) {
-            // Show editor panel
             this.codeRightPanel.classList.add("visible");
             this.chatPanels.classList.add("editor-open");
             this.toggleCodeBtn.classList.add("active");
@@ -448,7 +530,6 @@ class ChatClient {
                 await this.initCodeEditor();
             }
         } else {
-            // Hide editor panel
             this.codeRightPanel.classList.remove("visible");
             this.chatPanels.classList.remove("editor-open");
             this.toggleCodeBtn.classList.remove("active");
@@ -475,10 +556,8 @@ class ChatClient {
                 language = data.language || "javascript";
             }
 
-            // Set language selector
             this.codeLangSelect.value = language;
 
-            // Initialize editor
             this.codeEditorInstance = window.CodeEditor.init({
                 container: this.codeEditorContainer,
                 roomId: this.currentRoomId,
@@ -488,7 +567,6 @@ class ChatClient {
                 username: this.username,
             });
 
-            // Request current state from peers (late-joiner sync)
             if (this.socket && this.socket.readyState === WebSocket.OPEN) {
                 this.socket.send(JSON.stringify({
                     type: "code-sync-request",
@@ -497,7 +575,6 @@ class ChatClient {
                 }));
             }
 
-            // Start autosave
             this.startCodeAutosave();
         } catch (err) {
             console.error("Init code editor error:", err);
@@ -552,7 +629,6 @@ class ChatClient {
         const language = this.codeLangSelect.value;
         this.codeEditorInstance.setLanguage(language);
 
-        // Broadcast to other users in the room
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify({
                 type: "code-language-change",
@@ -562,7 +638,6 @@ class ChatClient {
             }));
         }
 
-        // Save immediately on language change
         await this.saveCodeSession();
     }
 
@@ -611,11 +686,10 @@ class ChatClient {
             this.socket = new WebSocket(wsUrl);
 
             this.socket.onopen = () => {
-                console.log("✅ Connected to server");
+                console.log("Connected to server");
                 this.reconnectAttempts = 0;
-                this.updateStatus(`Connected`, true);
+                this.updateStatus("Connected", true);
 
-                // Authenticate with token
                 this.socket.send(JSON.stringify({
                     type: "event",
                     action: "joined",
@@ -623,7 +697,6 @@ class ChatClient {
                     token: this.token,
                 }));
 
-                // Re-join active rooms
                 if (this.currentRoomId) {
                     this.socket.send(JSON.stringify({
                         type: "join-room",
@@ -643,7 +716,7 @@ class ChatClient {
             };
 
             this.socket.onclose = () => {
-                console.log("🔌 Disconnected");
+                console.log("Disconnected");
                 this.updateStatus("Disconnected", false);
 
                 if (!this.manualDisconnect) {
@@ -655,7 +728,7 @@ class ChatClient {
             };
 
             this.socket.onerror = (err) => {
-                console.error("❌ WebSocket error:", err);
+                console.error("WebSocket error:", err);
                 this.updateStatus("Connection error", false);
             };
         } catch (err) {
@@ -673,15 +746,13 @@ class ChatClient {
                 if (data.roomId === this.currentRoomId) {
                     this.addMessage(data.user, data.content, data.timestamp);
                 }
-                // Update room unread indicator later
                 break;
 
             case "event":
                 if (data.user !== this.username) {
-                    const emoji = data.action === "joined" ? "🟢" : "🔴";
-                    // Show system messages in current room if applicable
+                    const status = data.action === "joined" ? "joined" : "left";
                     if (this.currentRoomId) {
-                        this.addSystemMessage(`${emoji} ${data.user} ${data.action}`);
+                        this.addSystemMessage(`${data.user} ${status}`);
                     }
                 }
                 break;
@@ -692,7 +763,7 @@ class ChatClient {
 
             case "join-room":
                 if (data.success) {
-                    console.log(`✅ Joined room ${data.roomId}`);
+                    console.log(`Joined room ${data.roomId}`);
                 }
                 break;
 
@@ -750,7 +821,6 @@ class ChatClient {
                             update: stateUpdate,
                             user: this.username,
                         }));
-                        console.log(`[ChatClient] Sent code-sync-response to ${data.user}`);
                     }
                 }
                 break;
@@ -758,7 +828,6 @@ class ChatClient {
             case "code-sync-response":
                 if (data.roomId === this.currentRoomId && data.user !== this.username) {
                     if (this.codeEditorInstance) {
-                        console.log(`[ChatClient] Received code-sync-response from ${data.user}`);
                         this.codeEditorInstance.applyUpdate(data.update);
                     }
                 }
@@ -793,9 +862,10 @@ class ChatClient {
             li.className = `room-item ${room.id === this.currentRoomId ? "active" : ""}`;
             li.addEventListener("click", () => this.switchRoom(room));
 
-            const icon = document.createElement("span");
-            icon.className = "room-icon";
-            icon.textContent = room.isGroup ? "💬" : "👤";
+            const iconWrap = document.createElement("span");
+            iconWrap.className = "room-icon";
+            const iconSvg = createIcon(room.isGroup ? "message" : "user", 18);
+            iconWrap.appendChild(iconSvg);
 
             const info = document.createElement("div");
             info.className = "room-info";
@@ -811,7 +881,7 @@ class ChatClient {
             info.appendChild(name);
             info.appendChild(meta);
 
-            li.appendChild(icon);
+            li.appendChild(iconWrap);
             li.appendChild(info);
             this.roomsList.appendChild(li);
         });
@@ -826,8 +896,8 @@ class ChatClient {
     async switchRoom(room) {
         this.currentRoomId = room.id;
 
-        // Update UI
-        this.chatRoomTitle.textContent = room.isGroup ? `💬 ${room.name}` : `👤 ${this.getDMPartnerName(room)}`;
+        const prefix = room.isGroup ? "" : "";
+        this.chatRoomTitle.textContent = prefix + (room.isGroup ? room.name : this.getDMPartnerName(room));
         this.roomIdDisplay.textContent = room.id.substring(0, 8) + "...";
         this.roomIdDisplay.title = `Room ID: ${room.id} (click to copy)`;
         this.welcomeScreen.style.display = "none";
@@ -837,15 +907,12 @@ class ChatClient {
         this.messagesDiv.innerHTML = "";
         this.toggleCodeBtn.style.display = "flex";
 
-        // Mark active in sidebar
         this.renderRoomsList();
 
-        // Destroy existing code editor when switching rooms
         if (this.codeEditorInstance) {
             this.destroyCodeEditor();
         }
 
-        // Join room via WebSocket
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify({
                 type: "join-room",
@@ -854,7 +921,6 @@ class ChatClient {
             }));
         }
 
-        // Load chat history
         await this.loadChatHistory(room.id);
         this.messageInput.focus();
     }
@@ -960,7 +1026,7 @@ class ChatClient {
     }
 
     /* ====================================
-       DM (Direct Message)
+       DM
     ==================================== */
 
     async startDM(targetUsername) {
@@ -1037,15 +1103,15 @@ class ChatClient {
                 actions.className = "friend-actions";
 
                 const acceptBtn = document.createElement("button");
-                acceptBtn.className = "friend-accept-btn";
-                acceptBtn.textContent = "✅";
+                acceptBtn.className = "friend-action-btn success";
                 acceptBtn.title = "Accept";
+                acceptBtn.appendChild(createIcon("check", 14));
                 acceptBtn.addEventListener("click", () => this.acceptFriend(f.id));
 
                 const rejectBtn = document.createElement("button");
-                rejectBtn.className = "friend-reject-btn";
-                rejectBtn.textContent = "❌";
+                rejectBtn.className = "friend-action-btn danger";
                 rejectBtn.title = "Reject";
+                rejectBtn.appendChild(createIcon("x", 14));
                 rejectBtn.addEventListener("click", () => this.removeFriend(f.id));
 
                 actions.appendChild(acceptBtn);
@@ -1085,21 +1151,21 @@ class ChatClient {
             actions.className = "friend-actions";
 
             const dmBtn = document.createElement("button");
-            dmBtn.className = "friend-dm-btn";
-            dmBtn.textContent = "💬";
+            dmBtn.className = "friend-action-btn";
             dmBtn.title = "Send DM";
+            dmBtn.appendChild(createIcon("message", 14));
             dmBtn.addEventListener("click", () => this.startDM(f.friend.username));
 
             const callBtn = document.createElement("button");
-            callBtn.className = "friend-call-btn";
-            callBtn.textContent = "📹";
+            callBtn.className = "friend-action-btn";
             callBtn.title = "Video Call";
+            callBtn.appendChild(createIcon("video", 14));
             callBtn.addEventListener("click", () => this.startCall(f.friend.username));
 
             const removeBtn = document.createElement("button");
-            removeBtn.className = "friend-reject-btn";
-            removeBtn.textContent = "🗑️";
+            removeBtn.className = "friend-action-btn danger";
             removeBtn.title = "Remove";
+            removeBtn.appendChild(createIcon("trash", 14));
             removeBtn.addEventListener("click", () => this.removeFriend(f.id));
 
             actions.appendChild(dmBtn);
@@ -1203,9 +1269,10 @@ class ChatClient {
             const isCaller = call.callerId === this.userId;
             const otherUser = isCaller ? call.callee.username : call.caller.username;
 
-            const icon = document.createElement("span");
-            icon.className = "call-direction";
-            icon.textContent = isCaller ? "📤" : "📥";
+            const iconWrap = document.createElement("span");
+            iconWrap.className = "call-direction";
+            const dirIcon = createIcon(isCaller ? "phone-out" : "phone-in", 16);
+            iconWrap.appendChild(dirIcon);
 
             const info = document.createElement("div");
             info.className = "call-info-item";
@@ -1217,16 +1284,16 @@ class ChatClient {
             const meta = document.createElement("div");
             meta.className = "call-meta";
 
-            const statusEmoji = call.status === "completed" ? "✅" : call.status === "rejected" ? "❌" : "📞";
+            const statusText = call.status === "completed" ? "Completed" : call.status === "rejected" ? "Rejected" : "Missed";
             const duration = call.duration ? `${Math.floor(call.duration / 60)}m ${call.duration % 60}s` : "";
             const time = new Date(call.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-            meta.textContent = `${statusEmoji} ${call.status} ${duration ? `• ${duration}` : ""} • ${time}`;
+            meta.textContent = `${statusText} ${duration ? `• ${duration}` : ""} • ${time}`;
 
             info.appendChild(name);
             info.appendChild(meta);
 
-            li.appendChild(icon);
+            li.appendChild(iconWrap);
             li.appendChild(info);
             this.callsList.appendChild(li);
         });
@@ -1270,14 +1337,14 @@ class ChatClient {
 
                 const dmBtn = document.createElement("button");
                 dmBtn.className = "user-action-btn";
-                dmBtn.textContent = "💬";
                 dmBtn.title = "Send DM";
+                dmBtn.appendChild(createIcon("message", 14));
                 dmBtn.addEventListener("click", () => this.startDM(user));
 
                 const callBtn = document.createElement("button");
                 callBtn.className = "call-user-btn";
-                callBtn.textContent = "📹";
                 callBtn.title = "Video Call";
+                callBtn.appendChild(createIcon("video", 14));
                 callBtn.addEventListener("click", () => this.startCall(user));
 
                 actions.appendChild(dmBtn);
@@ -1324,7 +1391,7 @@ class ChatClient {
             }));
 
             this.callPeerName.textContent = `Calling ${targetUser}...`;
-            this.videoOverlay.style.display = "flex";
+            this.videoOverlay.classList.add("active");
             this.resetCallControls();
         } catch (err) {
             console.error("Failed to start call:", err);
@@ -1344,11 +1411,11 @@ class ChatClient {
         this.incomingOffer = data;
         this.incomingCaller = data.from;
         this.callerNameEl.textContent = `${data.from} is calling you...`;
-        this.incomingModal.style.display = "flex";
+        this.incomingModal.classList.add("active");
     }
 
     async acceptCall() {
-        this.incomingModal.style.display = "none";
+        this.incomingModal.classList.remove("active");
         if (!this.incomingOffer) return;
 
         this.callTarget = this.incomingCaller;
@@ -1376,7 +1443,7 @@ class ChatClient {
             }));
 
             this.callPeerName.textContent = `In call with ${this.callTarget}`;
-            this.videoOverlay.style.display = "flex";
+            this.videoOverlay.classList.add("active");
             this.resetCallControls();
         } catch (err) {
             console.error("Failed to accept call:", err);
@@ -1388,7 +1455,7 @@ class ChatClient {
     }
 
     rejectCall() {
-        this.incomingModal.style.display = "none";
+        this.incomingModal.classList.remove("active");
         if (this.incomingCaller) {
             this.socket.send(JSON.stringify({
                 type: "call-rejected", from: this.username, to: this.incomingCaller,
@@ -1405,11 +1472,9 @@ class ChatClient {
                 new RTCSessionDescription(data.sdp)
             );
             this.callPeerName.textContent = `In call with ${data.from}`;
-            console.log(`📞 Call connected with ${data.from}`);
+            console.log(`Call connected with ${data.from}`);
 
-            // Flush any ICE candidates that arrived before the answer
             if (this.pendingIceCandidates.length > 0) {
-                console.log(`🧊 Flushing ${this.pendingIceCandidates.length} queued ICE candidates`);
                 for (const candidate of this.pendingIceCandidates) {
                     try {
                         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
@@ -1427,9 +1492,7 @@ class ChatClient {
     async handleIceCandidate(data) {
         if (data.to !== this.username || !this.peerConnection) return;
 
-        // If remote description isn't set yet, queue the candidate
         if (!this.peerConnection.remoteDescription) {
-            console.log("🧊 Queuing ICE candidate (waiting for remote description)");
             this.pendingIceCandidates.push(data.candidate);
             return;
         }
@@ -1449,7 +1512,7 @@ class ChatClient {
 
     handleCallEnded(data) {
         if (data.to !== this.username) return;
-        this.addSystemMessage(`📵 Call with ${data.from} ended`);
+        this.addSystemMessage(`Call with ${data.from} ended`);
         this.cleanupCall();
     }
 
@@ -1474,7 +1537,7 @@ class ChatClient {
         this.peerConnection.oniceconnectionstatechange = () => {
             const state = this.peerConnection?.iceConnectionState;
             if (state === "disconnected" || state === "failed" || state === "closed") {
-                this.addSystemMessage(`📵 Call disconnected`);
+                this.addSystemMessage("Call disconnected");
                 this.cleanupCall();
             }
         };
@@ -1486,7 +1549,7 @@ class ChatClient {
                 type: "call-ended", from: this.username, to: this.callTarget,
             }));
         }
-        this.addSystemMessage(`📵 Call ended`);
+        this.addSystemMessage("Call ended");
         this.cleanupCall();
         this.loadCallHistory();
     }
@@ -1502,8 +1565,8 @@ class ChatClient {
         }
         this.localVideo.srcObject = null;
         this.remoteVideo.srcObject = null;
-        this.videoOverlay.style.display = "none";
-        this.incomingModal.style.display = "none";
+        this.videoOverlay.classList.remove("active");
+        this.incomingModal.classList.remove("active");
         this.callTarget = null;
         this.isCaller = false;
         this.micEnabled = true;
@@ -1519,7 +1582,17 @@ class ChatClient {
         this.localStream.getAudioTracks().forEach((track) => {
             track.enabled = this.micEnabled;
         });
-        this.toggleMicBtn.textContent = this.micEnabled ? "🎤" : "🔇";
+        this.updateMicButton();
+    }
+
+    updateMicButton() {
+        const span = this.toggleMicBtn.querySelector("span");
+        const svg = this.toggleMicBtn.querySelector("svg");
+        svg.innerHTML = "";
+        const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        use.setAttribute("href", this.micEnabled ? "#icon-mic" : "#icon-mic-off");
+        svg.appendChild(use);
+        span.textContent = this.micEnabled ? "Mute" : "Unmute";
         this.toggleMicBtn.className = `control-btn ${this.micEnabled ? "active" : "muted"}`;
     }
 
@@ -1529,17 +1602,25 @@ class ChatClient {
         this.localStream.getVideoTracks().forEach((track) => {
             track.enabled = this.cameraEnabled;
         });
-        this.toggleCameraBtn.textContent = this.cameraEnabled ? "📷" : "🚫";
+        this.updateCameraButton();
+    }
+
+    updateCameraButton() {
+        const span = this.toggleCameraBtn.querySelector("span");
+        const svg = this.toggleCameraBtn.querySelector("svg");
+        svg.innerHTML = "";
+        const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        use.setAttribute("href", this.cameraEnabled ? "#icon-camera" : "#icon-camera-off");
+        svg.appendChild(use);
+        span.textContent = this.cameraEnabled ? "Camera Off" : "Camera On";
         this.toggleCameraBtn.className = `control-btn ${this.cameraEnabled ? "active" : "muted"}`;
     }
 
     resetCallControls() {
         this.micEnabled = true;
         this.cameraEnabled = true;
-        this.toggleMicBtn.textContent = "🎤";
-        this.toggleMicBtn.className = "control-btn active";
-        this.toggleCameraBtn.textContent = "📷";
-        this.toggleCameraBtn.className = "control-btn active";
+        this.updateMicButton();
+        this.updateCameraButton();
     }
 }
 

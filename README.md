@@ -1,6 +1,113 @@
-# Distributed Real-Time Communication Platform
+# Scalixor
 
-A horizontally-scalable real-time communication platform with **group chat** and **1:1 video calling**, built on WebSocket + Redis Pub/Sub with WebRTC peer-to-peer media.
+A horizontally-scalable real-time communication platform with **group chat**, **collaborative code editing**, and **1:1 video calling**, built on WebSocket + Redis Pub/Sub with WebRTC peer-to-peer media.
+
+---
+
+## Visual Preview
+
+### Landing Page
+```
+┌─────────────────────────────────────────────────────────┐
+│  [◆ Scalixor]                              Get Started  │
+│                                                         │
+│              Real-Time Communication                    │
+│              for Developers                             │
+│                                                         │
+│   Chat, code together, and video call — built for       │
+│   teams, interviews, pair programming, and teaching.    │
+│                                                         │
+│   [ Get Started  → ]    [ View on GitHub  ↗ ]           │
+│                                                         │
+│   ┌────────────┐  ┌────────────┐  ┌────────────┐       │
+│   │   ◆◆◆      │  │   { }      │  │   ▶▶       │       │
+│   │ Real-Time  │  │ Collaborative│  │ 1:1 Video  │       │
+│   │ Chat       │  │ Editor       │  │ Calling    │       │
+│   └────────────┘  └────────────┘  └────────────┘       │
+│   ┌────────────┐                                        │
+│   │   ◇◇◇      │  Horizontally Scalable                 │
+│   │ Redis Pub/ │  Scale out without limits              │
+│   │ Sub + WS   │                                        │
+│   └────────────┘                                        │
+│                                                         │
+│   © Scalixor                                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Auth Screen
+```
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│                    [◆] Scalixor                         │
+│                   Welcome back                          │
+│           Sign in to your account to continue           │
+│                                                         │
+│         [ Login ]────[ Sign Up ]                        │
+│         ┌──────────────────────┐                        │
+│         │ Username             │                        │
+│         │ Password             │                        │
+│         │ [     Login      ]   │                        │
+│         └──────────────────────┘                        │
+│                                                         │
+│              Back to home                               │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Main App — Light Mode
+```
+┌────────────────┬────────────────────────────────────────┐
+│ ◆ Scalixor     │ #general      [Code]  ● Connected      │
+│ [↗] Logout     ├────────────────────────────────────────┤
+│ ───────────────│                                        │
+│ [◆] Rooms      │ Alice: Hey!                            │
+│ [◇] Friends    │                                        │
+│ [▶] Calls      │ You: Hi there                          │
+│ ───────────────│                                        │
+│ Online   3     │ [Type your message...    ] [Send]      │
+│ ● Alice        ├────────────────────────────────────────┤
+│ ● Bob          │ [Code Editor Panel]                    │
+│ ● You (you)    │                                        │
+└────────────────┴────────────────────────────────────────┘
+```
+
+### Main App — Dark Mode
+```
+┌────────────────┬────────────────────────────────────────┐
+│ ◆ Scalixor     │ #general      [Code]  ● Connected      │
+│ [↗] Logout     ├────────────────────────────────────────┤
+│ ───────────────│                                        │
+│ [◆] Rooms      │ Alice: Hey!                            │
+│ [◇] Friends    │                                        │
+│ [▶] Calls      │ You: Hi there                          │
+│ ───────────────│                                        │
+│ Online   3     │ [Type your message...    ] [Send]      │
+│ ● Alice        ├────────────────────────────────────────┤
+│ ● Bob          │ [Code Editor Panel]                    │
+│ ● You (you)    │                                        │
+└────────────────┴────────────────────────────────────────┘
+```
+*(Same layout, dark palette: #09090b paper, #18181b surface, #60a5fa accent)*
+
+### Video Call Overlay
+```
+┌─────────────────────────────────────────────────────────┐
+│  [Remote Video - Full Screen]                           │
+│                                                         │
+│  ┌─────────┐   In call with Bob                        │
+│  │ [Local] │                                           │
+│  └─────────┘                                            │
+│                                                         │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐                 │
+│  │  🎤     │  │  📷     │  │  📵     │                 │
+│  │  Mute   │  │ Camera  │  │  End    │                 │
+│  └─────────┘  └─────────┘  └─────────┘                 │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+*(Icons are SVG; labels read "Mute/Unmute", "Camera Off/On", "End")*
+
+---
 
 ## Architecture
 
@@ -52,8 +159,10 @@ After WebRTC signaling completes:
 
 | Component | Technology |
 |-----------|------------|
-| Frontend | HTML, CSS, Vanilla JavaScript |
-| Backend | Node.js, TypeScript, `ws` library |
+| Frontend | HTML5, CSS3, Vanilla JavaScript |
+| Design System | Geist + Geist Mono, CSS Custom Properties, Light/Dark mode |
+| Backend | Node.js, TypeScript, Express, `ws` library |
+| Database | PostgreSQL (Prisma ORM) |
 | Pub/Sub | Redis 7 (ioredis) |
 | Video | WebRTC (native browser API) |
 | STUN | `stun:stun.l.google.com:19302` |
@@ -64,23 +173,30 @@ After WebRTC signaling completes:
 
 ```
 ├── client/
-│   ├── index.html          # Chat UI + Video Call UI
-│   ├── index.css            # Dark theme design system
-│   └── index.js             # WebSocket client + WebRTC logic
+│   ├── index.html          # Landing page + Chat UI + Video Call UI
+│   ├── tokens.css          # Design system tokens (light/dark)
+│   ├── index.css           # Component styles
+│   ├── index.js            # WebSocket client + WebRTC logic
+│   ├── editor.style.css    # Code editor styles
+│   └── editor.bundle.js    # Code editor bundle
 ├── server/
 │   ├── src/
 │   │   ├── index.ts         # Entry point, connection handler
 │   │   ├── types.ts         # TypeScript types & enums
 │   │   ├── redis.ts         # Redis Pub/Sub + online user tracking
 │   │   ├── signaling.ts     # WebRTC signaling relay
-│   │   └── utils.ts         # Helpers (parse, broadcast, logging)
+│   │   ├── utils.ts         # Helpers (parse, broadcast, logging)
+│   │   ├── auth.ts          # JWT auth
+│   │   ├── prisma.ts        # Prisma client
+│   │   └── routes.ts        # REST API routes
 │   ├── .env                 # Environment variables
 │   ├── Dockerfile
 │   ├── package.json
 │   └── tsconfig.json
-├── docker-compose.yml       # 3 WS servers + Redis + Caddy
+├── docker-compose.yml       # 3 WS servers + Redis + Caddy + Postgres
 ├── Caddyfile                # Reverse proxy with sticky sessions
-└── README.md
+├── README.md
+└── PROJECT_DEEP_DIVE.md     # Comprehensive architecture docs
 ```
 
 ## Quick Start
@@ -93,7 +209,7 @@ After WebRTC signaling completes:
 ```bash
 # Clone and start
 git clone <repo-url>
-cd Real_Time_Chat_App-main
+cd Scalixor
 docker-compose up --build
 ```
 
@@ -104,8 +220,8 @@ Open **http://localhost:3000** in your browser.
 1. Open `http://localhost:3000` in Browser 1 → Connect as **Alice**
 2. Open `http://localhost:3000` in Browser 2 (or incognito) → Connect as **Bob**
 3. **Chat**: Send messages between browsers
-4. **Video Call**: Click 📹 **Call** next to a user → Accept/Reject on the other end
-5. **Controls**: Toggle mic 🎤, camera 📷, or end call 📵
+4. **Video Call**: Click **Call** next to a user → Accept/Reject on the other end
+5. **Controls**: Toggle mic, camera, or end call
 
 ## Environment Variables
 
@@ -113,6 +229,8 @@ Open **http://localhost:3000** in your browser.
 |----------|---------|-------------|
 | `PORT` | `8080` | WebSocket server port |
 | `REDIS_URL` | `redis://redis:6379` | Redis connection string |
+| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection string |
+| `JWT_SECRET` | — | Secret for signing JWT tokens |
 
 These are set per-instance in `docker-compose.yml`. The `.env` file provides defaults for local development.
 
@@ -123,23 +241,45 @@ These are set per-instance in `docker-compose.yml`. The `.env` file provides def
 | `message` | Client ↔ Server | Chat messages |
 | `event` | Client ↔ Server | Join/leave notifications |
 | `user-list` | Server → Client | Online users update |
+| `join-room` | Client → Server | Subscribe to a room |
+| `leave-room` | Client → Server | Unsubscribe from a room |
 | `offer` | Client → Server → Client | WebRTC SDP offer |
 | `answer` | Client → Server → Client | WebRTC SDP answer |
 | `ice-candidate` | Client → Server → Client | ICE connectivity candidate |
 | `call-rejected` | Client → Server → Client | Call rejection |
 | `call-ended` | Client → Server → Client | Call termination |
+| `code-update` | Client ↔ Server | Collaborative editor delta |
+| `code-language-change` | Client ↔ Server | Editor language switch |
+| `code-sync-request` | Client → Server | Request full editor state |
+| `code-sync-response` | Server → Client | Full editor state reply |
 
 ## Features
 
-- ✅ Real-time group chat
+- ✅ Professional landing page with light/dark mode
+- ✅ Real-time group chat with message history
 - ✅ 1:1 video calling (WebRTC P2P)
+- ✅ Collaborative code editor (multi-language, real-time sync)
 - ✅ Online users list (cross-server)
 - ✅ Incoming call modal (Accept / Reject)
-- ✅ Mic & Camera toggle
+- ✅ Mic & Camera toggle with text labels
 - ✅ Heartbeat (dead connection cleanup)
 - ✅ Auto-reconnect (5 attempts)
 - ✅ Horizontally scalable (3 instances demo)
 - ✅ Redis Pub/Sub for cross-server sync
 - ✅ Sticky sessions via Caddy
-- ✅ Dark theme UI
+- ✅ Light & Dark theme toggle
 - ✅ Graceful shutdown
+- ✅ Friend requests & DM rooms
+- ✅ Call history
+
+## Design System
+
+Scalixor uses a custom token-based design system:
+
+- **Font**: Geist (sans) + Geist Mono (code)
+- **Colors**: Slate neutrals with blue accent (`#2563eb` light / `#60a5fa` dark)
+- **Spacing**: 4pt scale with semantic names
+- **Motion**: CSS transitions only, respects `prefers-reduced-motion`
+- **Icons**: Inline SVG sprite, never emojis as UI elements
+
+See `client/tokens.css` for the full token reference.
