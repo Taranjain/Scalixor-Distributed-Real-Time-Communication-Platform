@@ -126,6 +126,8 @@ class ChatClient {
         this.landingPage = document.getElementById("landing-page");
         this.landingLoginBtn = document.getElementById("landing-login-btn");
         this.heroCtaBtn = document.getElementById("hero-cta-btn");
+        this.navHamburger = document.getElementById("nav-hamburger");
+        this.navLinks = document.getElementById("landing-nav-links");
 
         // Theme
         this.themeToggle = document.getElementById("theme-toggle");
@@ -240,6 +242,42 @@ class ChatClient {
         this.landingLoginBtn.addEventListener("click", () => this.showAuth());
         this.heroCtaBtn.addEventListener("click", () => this.showAuth());
         this.authBackBtn.addEventListener("click", () => this.showLanding());
+
+        // Nav hamburger toggle
+        this.navHamburger.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.navLinks.classList.toggle("is-open");
+            const expanded = this.navLinks.classList.contains("is-open");
+            this.navHamburger.setAttribute("aria-expanded", String(expanded));
+        });
+
+        // Close nav on click outside
+        document.addEventListener("click", (e) => {
+            if (
+                this.navLinks.classList.contains("is-open") &&
+                !this.navLinks.contains(e.target) &&
+                !this.navHamburger.contains(e.target)
+            ) {
+                this.navLinks.classList.remove("is-open");
+                this.navHamburger.setAttribute("aria-expanded", "false");
+            }
+        });
+
+        // Nav anchor smooth scroll
+        document.querySelectorAll('.nav-link[href^="#"]').forEach((link) => {
+            link.addEventListener("click", (e) => {
+                const href = link.getAttribute("href");
+                if (href && href.startsWith("#")) {
+                    e.preventDefault();
+                    const target = document.querySelector(href);
+                    if (target) {
+                        this.navLinks.classList.remove("is-open");
+                        this.navHamburger.setAttribute("aria-expanded", "false");
+                        target.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                }
+            });
+        });
 
         // Auth tabs
         this.tabLogin.addEventListener("click", () => this.switchAuthTab("login"));
@@ -504,9 +542,9 @@ class ChatClient {
         this.sidebarTabs.forEach((t) => {
             t.classList.toggle("active", t.dataset.tab === tab);
         });
-        this.roomsTab.style.display = tab === "rooms" ? "flex" : "none";
-        this.friendsTab.style.display = tab === "friends" ? "flex" : "none";
-        this.callsTab.style.display = tab === "calls" ? "none" : "none";
+        this.roomsTab.style.display = "none";
+        this.friendsTab.style.display = "none";
+        this.callsTab.style.display = "none";
         if (tab === "rooms") this.roomsTab.style.display = "flex";
         if (tab === "friends") this.friendsTab.style.display = "flex";
         if (tab === "calls") { this.callsTab.style.display = "flex"; this.loadCallHistory(); }

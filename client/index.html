@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Scalixor — Distributed real-time communication platform with rooms, chat, video calling, and collaborative coding." />
     <title>Scalixor</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5z'/%3E%3Cpath d='M2 17l10 5 10-5'/%3E%3Cpath d='M2 12l10 5 10-5'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="editor.style.css">
@@ -200,21 +201,32 @@
 
     <!-- ============ LANDING PAGE ============ -->
     <div id="landing-page">
-        <div class="hero-glow"></div>
-
         <nav class="landing-nav">
             <div class="landing-nav-inner">
                 <div class="landing-logo">
                     <svg><use href="#icon-logo"/></svg>
                     <span>Scalixor</span>
                 </div>
-                <div class="landing-nav-actions">
+                <button id="nav-hamburger" class="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+                    <svg class="icon"><use href="#icon-menu"/></svg>
+                </button>
+                <div class="landing-nav-links" id="landing-nav-links">
+                    <a href="#features" class="nav-link">Features</a>
+                    <a href="#about" class="nav-link">About</a>
+                    <a href="#use-cases" class="nav-link">Use Cases</a>
+                    <a href="#how-to-use" class="nav-link">How to Use</a>
+                    <a href="#architecture" class="nav-link">Architecture</a>
+                    <a href="https://github.com/Taranjain/Scalixor-Distributed-Real-Time-Communication-Platform" target="_blank" rel="noopener" class="nav-link">GitHub</a>
                     <button id="landing-login-btn" class="btn btn-primary">Get Started</button>
                 </div>
             </div>
         </nav>
 
         <section class="hero">
+            <div class="hero-video-wrap">
+                <video autoplay muted loop playsinline src="./indexhtml.mp4" poster=""></video>
+                <div class="hero-video-overlay"></div>
+            </div>
             <div class="hero-inner">
                 <div class="hero-badge">
                     <span class="dot"></span>
@@ -227,7 +239,7 @@
                         Get Started
                         <svg class="icon"><use href="#icon-arrow-right"/></svg>
                     </button>
-                    <a href="https://github.com" target="_blank" rel="noopener" class="btn btn-secondary btn-lg">
+                    <a href="https://github.com/Taranjain/Scalixor-Distributed-Real-Time-Communication-Platform" target="_blank" rel="noopener" class="btn btn-secondary btn-lg">
                         View on GitHub
                         <svg class="icon"><use href="#icon-external"/></svg>
                     </a>
@@ -235,7 +247,7 @@
             </div>
         </section>
 
-        <section class="features">
+        <section id="features" class="features">
             <div class="section-header">
                 <h2>Everything you need</h2>
                 <p>A complete real-time platform designed for developer workflows.</p>
@@ -272,7 +284,132 @@
             </div>
         </section>
 
-        <section class="architecture">
+        <section id="about" class="about">
+            <div class="section-header">
+                <h2>Built for Scale</h2>
+                <p>A deep dive into what makes Scalixor tick.</p>
+            </div>
+            <div class="about-grid">
+                <div class="about-card">
+                    <div class="feature-icon">
+                        <svg><use href="#icon-layers"/></svg>
+                    </div>
+                    <h3>Distributed Architecture</h3>
+                    <p>Caddy reverse proxy with <code>ip_hash</code> sticky sessions routes clients to multiple WebSocket instances. Redis Pub/Sub synchronizes messages and signaling across the cluster.</p>
+                </div>
+                <div class="about-card">
+                    <div class="feature-icon">
+                        <svg><use href="#icon-message"/></svg>
+                    </div>
+                    <h3>Real-Time Engine</h3>
+                    <p>WebSocket rooms with a 30-second heartbeat, auto-reconnect up to 5 attempts, and Redis-backed online presence ensure you never miss a beat.</p>
+                </div>
+                <div class="about-card">
+                    <div class="feature-icon">
+                        <svg><use href="#icon-grid"/></svg>
+                    </div>
+                    <h3>Persistent Storage</h3>
+                    <p>Prisma ORM + PostgreSQL persist messages, room memberships, friendships, call logs, and collaborative code sessions.</p>
+                </div>
+                <div class="about-card">
+                    <div class="feature-icon">
+                        <svg><use href="#icon-video"/></svg>
+                    </div>
+                    <h3>WebRTC Signaling</h3>
+                    <p>P2P video means media never touches the server. Non-blocking call logging keeps the signaling path fast and fire-and-forget.</p>
+                </div>
+                <div class="about-card">
+                    <div class="feature-icon">
+                        <svg><use href="#icon-file-code"/></svg>
+                    </div>
+                    <h3>Collaborative Editor</h3>
+                    <p>Yjs CRDT sync, 16-language syntax highlighting, and 5-second autosave to the database keep every keystroke in sync.</p>
+                </div>
+                <div class="about-card">
+                    <div class="feature-icon">
+                        <svg><use href="#icon-check"/></svg>
+                    </div>
+                    <h3>Security First</h3>
+                    <p>JWT auth, bcrypt password hashing, and membership-gated API routes protect your data and conversations.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="use-cases" class="use-cases">
+            <div class="section-header">
+                <h2>Who It's For</h2>
+                <p>Scalixor adapts to the way you work.</p>
+            </div>
+            <div class="use-cases-grid">
+                <div class="use-case-card">
+                    <div class="use-case-icon">
+                        <svg><use href="#icon-code"/></svg>
+                    </div>
+                    <h3>Developers</h3>
+                    <p>Pair programming, live code reviews, and debugging together in 16 languages with a shared editor.</p>
+                </div>
+                <div class="use-case-card">
+                    <div class="use-case-icon">
+                        <svg><use href="#icon-user"/></svg>
+                    </div>
+                    <h3>Teachers & Mentors</h3>
+                    <p>Walk students through DSA problems in real-time. See their cursor, correct syntax, and explain logic live.</p>
+                </div>
+                <div class="use-case-card">
+                    <div class="use-case-icon">
+                        <svg><use href="#icon-phone-call"/></svg>
+                    </div>
+                    <h3>Interviewers</h3>
+                    <p>Run remote technical interviews with video + a live coding pad in a single browser tab — no third-party tools.</p>
+                </div>
+                <div class="use-case-card">
+                    <div class="use-case-icon">
+                        <svg><use href="#icon-friends"/></svg>
+                    </div>
+                    <h3>Remote Teams</h3>
+                    <p>Persistent group rooms, friend lists, and 1:1 video calls without leaving the browser.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="how-to-use" class="how-to-use">
+            <div class="section-header">
+                <h2>How to Use</h2>
+                <p>From signup to your first call in four steps.</p>
+            </div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-body">
+                        <h3>Sign Up</h3>
+                        <p>Create a free account with JWT-secured auth. Your credentials are hashed with bcrypt before they ever hit the database.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-body">
+                        <h3>Create or Join a Room</h3>
+                        <p>Start a group room, open a DM with a friend, or paste a Room ID to join an existing conversation instantly.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-body">
+                        <h3>Chat & Code</h3>
+                        <p>Send messages in real-time, open the collaborative editor, pick a language, and type together with live cursor sync.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-body">
+                        <h3>Video Call</h3>
+                        <p>Click the video icon on any friend or online user to start an encrypted P2P call — your media never flows through our servers.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="architecture" class="architecture">
             <div class="section-header">
                 <h2>Architecture</h2>
                 <p>Built for scale from day one.</p>
@@ -305,7 +442,30 @@
         </section>
 
         <footer class="landing-footer">
-            <p>Scalixor — Distributed Real-Time Communication Platform</p>
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <div class="landing-logo">
+                        <svg><use href="#icon-logo"/></svg>
+                        <span>Scalixor</span>
+                    </div>
+                    <p>Distributed Real-Time Communication Platform</p>
+                </div>
+                <div class="footer-links">
+                    <h4>Product</h4>
+                    <a href="#features">Features</a>
+                    <a href="#about">About</a>
+                    <a href="#use-cases">Use Cases</a>
+                    <a href="#how-to-use">How to Use</a>
+                </div>
+                <div class="footer-links">
+                    <h4>Developers</h4>
+                    <a href="#architecture">Architecture</a>
+                    <a href="https://github.com/Taranjain/Scalixor-Distributed-Real-Time-Communication-Platform" target="_blank" rel="noopener">GitHub</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>Scalixor — Distributed Real-Time Communication Platform</p>
+            </div>
         </footer>
     </div>
 
